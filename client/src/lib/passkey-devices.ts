@@ -4,10 +4,10 @@
  *
  * ── WHY IT HAS TO EXIST ─────────────────────────────────────────────────────
  *
- * `pinStore` answers "does this device have a Quick PIN for that account".
- * This answers the same for passkeys, so the sign-in and lock screens can lead
- * with the passkey on a device that has one — the owner's order is passkey,
- * then PIN, then password — instead of guessing.
+ * The Quick PIN works on any device (14230), so the only credential that
+ * belongs to a DEVICE is the passkey. This records which accounts hold one
+ * here, so the sign-in and lock screens can lead with it — the owner's order is
+ * passkey, then PIN, then password — instead of guessing.
  *
  * Asking the server is not the answer: the server knows every passkey the
  * ACCOUNT holds, but not which of them lives in THIS browser's authenticator.
@@ -28,20 +28,24 @@
  *
  * ── WHAT WRITES AND DELETES IT ──────────────────────────────────────────────
  *
- *   written  a passkey is REGISTERED from this device, or a passkey SIGN-IN
+ *   written  a passkey is REGISTERED from this device, a passkey SIGN-IN
  *            succeeds here (proof the credential is here — a synced iCloud /
- *            Google passkey counts, and should).
- *   deleted  the server says a credential is no longer on the account
- *            (PASSKEY_REVOKED), this device's passkey is removed in My
- *            security, or the account is released ("Sign out and remove this
- *            account"). Never a dismissed Face ID sheet — that is an answer,
- *            not a fact about the credential.
+ *            Google passkey counts, and should), or the server's memory of
+ *            this device lists one (device-memory.ts — after the browser
+ *            erased this store).
+ *   deleted  ONLY when the passkey is REVOKED: removed in My security (here or
+ *            from another device), which the server then reports as
+ *            PASSKEY_REVOKED or leaves off its list. Owner decision, 29 Sep
+ *            2026: nothing else takes a passkey off a device — not signing
+ *            out, not "Not you?", not another person signing in, not a wrong
+ *            PIN, and never a dismissed Face ID sheet (that is an answer, not a
+ *            fact about the credential).
  *
- * SURVIVES LOGOUT ON PURPOSE, like pinStore and deviceId — it is a DEVICE fact.
- * auth-context preserves it across the logout localStorage.clear() via
- * snapshot()/restore().
+ * SURVIVES LOGOUT — it is a DEVICE fact, listed in device-keys.ts, and sign-out
+ * removes session keys only.
  */
 const KEY = "praxis.passkey.devices";
+export const PASSKEY_DEVICES_KEY = KEY;
 
 type Entry = true | { ids: string[] };
 type Registry = Record<string, Entry>;
@@ -115,31 +119,10 @@ export const passkeyDeviceStore = {
   /** Does this device hold THAT credential? (My security's "this device" badge.) */
   holds: (email: string, credentialId: string): boolean =>
     !!email && idsOf(read()[key(email)]).includes(credentialId),
+  /** The account holds NO passkeys any more (the server's list is empty). */
   remove: (email: string) => {
     const r = read();
     delete r[key(email)];
     write(r);
-  },
-  clear: () => {
-    try {
-      localStorage.removeItem(KEY);
-    } catch {
-      /* @silent:storage */
-    }
-  },
-  snapshot: (): string => {
-    try {
-      return localStorage.getItem(KEY) || "{}";
-    } catch {
-      /* @silent:storage */
-      return "{}";
-    }
-  },
-  restore: (s: string) => {
-    try {
-      localStorage.setItem(KEY, s);
-    } catch {
-      /* @silent:storage */
-    }
   },
 };

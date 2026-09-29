@@ -285,40 +285,58 @@ async function countActiveCeos(client) {
   return rows[0].n;
 }
 
-// ── Device-bound quick PIN login (user_device) ──
-async function insertDevice(client, { userId, label, pinHash }) {
-  const { rows } = await client.query(
-    "INSERT INTO user_device (user_id, label, pin_hash) VALUES ($1,$2,$3) RETURNING device_id, label, status, created_at",
-    [userId, label || null, pinHash]);
-  return rows[0];
-}
-async function getActiveDeviceForUser(client, deviceId, userId) {
-  const { rows } = await client.query(
-    "SELECT * FROM user_device WHERE device_id = $1 AND user_id = $2 AND status = 'ACTIVE'", [deviceId, userId]);
+// ── Quick PIN (user_quick_pin, 14230) — one per person, valid on any device ──
+/** The person's PIN row (with the hash — for sign-in only), or null. */
+async function getQuickPin(client, userId) {
+  const { rows } = await client.query("SELECT * FROM user_quick_pin WHERE user_id = $1", [userId]);
   return rows[0] || null;
 }
-/** How many PIN devices can still sign this user in — the per-user cap. */
-async function countActiveDevices(client, userId) {
+/** What My security shows — never the hash. */
+async function quickPinStatus(client, userId) {
   const { rows } = await client.query(
-    "SELECT COUNT(*)::int AS n FROM user_device WHERE user_id = $1 AND status = 'ACTIVE'", [userId]);
-  return rows[0].n;
+    "SELECT created_at, updated_at, last_used_at FROM user_quick_pin WHERE user_id = $1", [userId]);
+  return rows[0] || null;
 }
-async function listDevices(client, userId) {
+/** Does this person have a Quick PIN? (the sign-in screen offers the PIN on it) */
+async function hasQuickPin(client, userId) {
+  const r = await client.query("SELECT 1 FROM user_quick_pin WHERE user_id = $1", [userId]);
+  return !!(r && r.rows && r.rows[0]);
+}
+/** Set or replace the PIN. A new PIN starts with a clean slate of attempts. */
+async function upsertQuickPin(client, { userId, pinHash }) {
   const { rows } = await client.query(
-    "SELECT device_id, label, status, failed_pin, last_used_at, created_at FROM user_device WHERE user_id = $1 ORDER BY created_at DESC", [userId]);
-  return rows;
+    `INSERT INTO user_quick_pin (user_id, pin_hash) VALUES ($1, $2)
+     ON CONFLICT (user_id) DO UPDATE SET
+       pin_hash = EXCLUDED.pin_hash, failed_attempts = 0, window_started_at = NULL,
+       window_failures = 0, updated_at = now()
+     RETURNING created_at, updated_at, last_used_at, (xmax = 0) AS inserted`,
+    [userId, pinHash]);
+  return rows[0];
 }
-async function recordDevicePinFailure(client, deviceId) {
+/**
+ * Count one miss, atomically, against BOTH limits: the run of misses in a row
+ * and the misses inside a rolling 30-day window (a window older than that
+ * starts again at this miss). The right-hand sides read the row as it was.
+ */
+async function recordQuickPinFailure(client, userId) {
   const { rows } = await client.query(
-    "UPDATE user_device SET failed_pin = failed_pin + 1 WHERE device_id = $1 RETURNING failed_pin", [deviceId]);
-  return rows[0] || { failed_pin: 0 };
+    `UPDATE user_quick_pin SET
+       failed_attempts = failed_attempts + 1,
+       window_failures = CASE WHEN window_started_at IS NULL OR window_started_at < now() - interval '30 days'
+                              THEN 1 ELSE window_failures + 1 END,
+       window_started_at = CASE WHEN window_started_at IS NULL OR window_started_at < now() - interval '30 days'
+                                THEN now() ELSE window_started_at END
+     WHERE user_id = $1
+     RETURNING failed_attempts, window_failures`,
+    [userId]);
+  return rows[0] || { failed_attempts: 0, window_failures: 0 };
 }
-async function resetDevicePin(client, deviceId) {
-  await client.query("UPDATE user_device SET failed_pin = 0, last_used_at = now() WHERE device_id = $1", [deviceId]);
+/** A right PIN ends the run of misses. The 30-day window is NOT reset — that is its point. */
+async function recordQuickPinSuccess(client, userId) {
+  await client.query("UPDATE user_quick_pin SET failed_attempts = 0, last_used_at = now() WHERE user_id = $1", [userId]);
 }
-async function revokeDevice(client, deviceId, userId) {
-  const { rows } = await client.query(
-    "UPDATE user_device SET status = 'REVOKED' WHERE device_id = $1 AND user_id = $2 RETURNING device_id", [deviceId, userId]);
+async function deleteQuickPin(client, userId) {
+  const { rows } = await client.query("DELETE FROM user_quick_pin WHERE user_id = $1 RETURNING user_id", [userId]);
   return rows[0] || null;
 }
 
@@ -398,7 +416,7 @@ module.exports = {
   insertUser, getUserSafe, getUserWithHash, listUsersSafe, updateUserFields, setPasswordHash, setAvatar, employeeExists, listEmployeesLite, setStatus, setRoles, roleCodes, roleIds, countActiveCeos,
   getSignature, upsertSignature, ceoRoleId, roleNames, roleNamesByIds,
   createResetToken, findResetByHash, markResetUsed, invalidateUserResets, killAllSessionsForUser, killOtherSessionsForUser,
-  insertDevice, getActiveDeviceForUser, countActiveDevices, listDevices, recordDevicePinFailure, resetDevicePin, revokeDevice,
+  getQuickPin, quickPinStatus, hasQuickPin, upsertQuickPin, recordQuickPinFailure, recordQuickPinSuccess, deleteQuickPin,
   findByEmail,
   recordLoginSuccess,
   recordLoginFailure,

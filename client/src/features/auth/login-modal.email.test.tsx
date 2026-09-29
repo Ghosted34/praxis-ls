@@ -22,7 +22,15 @@
  * not ask for it, so there is no longer any state where a prefilled address and
  * an editable field exist at the same time — the refill has nowhere to happen.
  * Changing account is now an explicit act ("Not you? Switch account"), which
- * clears the device's memory and hands over an empty, focused field.
+ * hands over an empty, focused field.
+ *
+ * ── AND IT FORGETS NOTHING (29 Sep 2026) ────────────────────────────────────
+ *
+ * "Not you?" used to delete the device's memory of its person. The owner's rule
+ * now is that a device forgets its person's passkey only when they remove it
+ * themselves, so "Not you?" is a blank form for SOMEONE ELSE in this tab — the
+ * greeting, and the passkey record, stay; "Continue as Ama" goes back; and only
+ * a different person actually signing in moves the greeting to them.
  *
  * So the original assertion — "backspace the last character and the value stays
  * gone" — is now covered by the second test below, and the ones after it walk
@@ -34,7 +42,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { lastSessionStore } from "@/lib/last-session";
-import { pinStore } from "@/lib/pin-store";
+import { passkeyDeviceStore } from "@/lib/passkey-devices";
 
 /** Declared with the real signature, so the assertions below are typed against
  *  the arguments the modal actually passes rather than against `any`. */
@@ -51,6 +59,13 @@ vi.mock("@/app/auth/auth-context", () => ({
     pinLogin: vi.fn(),
     passkeyLogin: vi.fn(),
   }),
+}));
+
+// The server's memory of the device is its own file's business (and would
+// otherwise be a real request from jsdom).
+vi.mock("@/lib/device-memory", () => ({
+  recallDevice: vi.fn(async () => null),
+  keepDeviceStorage: vi.fn(async () => {}),
 }));
 
 vi.mock("@/app/branding/branding-context", () => ({
@@ -142,6 +157,7 @@ describe("LoginModal — typing an address on a device that knows nobody", () =>
 describe("LoginModal — changing account on a device that remembers someone", () => {
   beforeEach(() => {
     localStorage.clear();
+    sessionStorage.clear();
     loginMock.mockClear();
     loginMock.mockImplementation(async (email: string) => {
       // What auth-context's login does on success, and the only reason the
@@ -151,14 +167,16 @@ describe("LoginModal — changing account on a device that remembers someone", (
         display_name: "Kofi Mensah",
         avatar_url: null,
       });
+      lastSessionStore.someoneElse.end();
       return { pending2fa: false };
     });
     lastSessionStore.set({
       email: REMEMBERED,
       display_name: "Ama Nkeng",
       avatar_url: null,
+      has_quick_pin: true,
     });
-    pinStore.set(REMEMBERED, { device_id: "d-ama", label: "This laptop" });
+    passkeyDeviceStore.add(REMEMBERED, "cred-ama");
   });
 
   it("does not render an email field at all while the device knows you", () => {
@@ -173,7 +191,7 @@ describe("LoginModal — changing account on a device that remembers someone", (
     ).toBeInTheDocument();
   });
 
-  it("'Switch account' releases the device, then hands over an empty focused field", async () => {
+  it("'Not you?' hands over an empty focused field — and the device forgets nothing", async () => {
     const user = userEvent.setup();
     renderModal();
 
@@ -184,15 +202,15 @@ describe("LoginModal — changing account on a device that remembers someone", (
     const input = emailField();
     expect(input).toHaveValue("");
     expect(input).toHaveFocus();
-    // The greeting goes with the identity it belonged to.
     expect(
       screen.queryByText(/Welcome back, Ama/),
     ).not.toBeInTheDocument();
-    // Released for real, not just hidden: a reopen must not re-greet.
-    expect(lastSessionStore.get()).toBeNull();
+    // Ama is still this device's person, and her passkey is still here.
+    expect(lastSessionStore.get()?.email).toBe(REMEMBERED);
+    expect(passkeyDeviceStore.ids(REMEMBERED)).toEqual(["cred-ama"]);
   });
 
-  it("is still released after the modal is reopened", async () => {
+  it("stays on the blank form when the modal is reopened in this tab", async () => {
     const user = userEvent.setup();
     const first = renderModal();
 
@@ -201,17 +219,32 @@ describe("LoginModal — changing account on a device that remembers someone", (
     );
     first.unmount();
 
-    // The release has to be in the STORE, not in component state — otherwise a
-    // reload, or simply closing and reopening the modal, would greet the person
-    // who just said they were somebody else.
-    expect(lastSessionStore.get()).toBeNull();
+    // Closing and reopening must not greet the person who just said they were
+    // somebody else — without the device having to forget Ama to achieve it.
     renderModal();
     expect(
       screen.queryByText(/Welcome back, Ama/),
     ).not.toBeInTheDocument();
+    expect(emailField()).toHaveValue("");
+    expect(lastSessionStore.get()?.email).toBe(REMEMBERED);
   });
 
-  it("signing in as somebody else moves the device memory to them", async () => {
+  it("'Continue as Ama' goes straight back to her greeting", async () => {
+    const user = userEvent.setup();
+    renderModal();
+
+    await user.click(
+      screen.getByRole("button", { name: "Not you? Switch account" }),
+    );
+    await user.click(screen.getByRole("button", { name: /Continue as Ama/ }));
+
+    expect(
+      screen.getByRole("heading", { name: /Welcome back, Ama/ }),
+    ).toBeInTheDocument();
+    expect(lastSessionStore.someoneElse.active()).toBe(false);
+  });
+
+  it("signing in as somebody else moves the greeting to them", async () => {
     const user = userEvent.setup();
     renderModal();
 
@@ -224,22 +257,23 @@ describe("LoginModal — changing account on a device that remembers someone", (
 
     // No "keep me signed in" any more: every session ends at two hours.
     expect(loginMock).toHaveBeenCalledWith("kofi@other.cm", "correct horse");
-    // The device now belongs to Kofi — not to Ama, and not to nobody.
+    // The device now greets Kofi — not Ama, and not nobody.
     expect(lastSessionStore.get()?.email).toBe("kofi@other.cm");
   });
 
-  it("leaves the previous owner's Quick PIN alone", async () => {
+  it("leaves the previous person's passkey on the device, even after someone else signs in", async () => {
     const user = userEvent.setup();
     renderModal();
 
     await user.click(
       screen.getByRole("button", { name: "Not you? Switch account" }),
     );
+    await user.type(emailField(), "kofi@other.cm");
+    await user.type(screen.getByLabelText("Password"), "correct horse");
+    await user.click(screen.getByRole("button", { name: /^Sign in$/ }));
 
-    // Switching account says "not me", not "destroy my credentials". Ama's PIN
-    // record is keyed by her email and survives, so signing back in is still
-    // fast. Destroying it is the other exit — "Sign out and remove this
-    // account" in the shell.
-    expect(pinStore.get(REMEMBERED)).toMatchObject({ device_id: "d-ama" });
+    // "Not me" is not "destroy my credentials". Ama's passkey record is keyed
+    // by her email and survives; only removing it in My security takes it off.
+    expect(passkeyDeviceStore.ids(REMEMBERED)).toEqual(["cred-ama"]);
   });
 });

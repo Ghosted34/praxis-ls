@@ -1,7 +1,7 @@
 /**
  * Remembers who has been asked about passkeys, so the ask is persistent
- * without being a nag. Like pinStore and lastSession these are DEVICE facts and
- * survive logout on purpose.
+ * without being a nag. Like lastSession these are DEVICE facts and survive
+ * logout on purpose (device-keys.ts).
  *
  * TWO surfaces ask, and they are dismissed SEPARATELY on purpose:
  *
@@ -20,6 +20,7 @@
  */
 const DECLINED_KEY = "praxis.passkey.offer.declined";
 const NUDGE_KEY = "praxis.passkey.nudge.dismissed";
+export const PASSKEY_OFFER_KEYS = [DECLINED_KEY, NUDGE_KEY] as const;
 
 /** How long "Not now" holds the sign-in ask off, on this device. */
 export const OFFER_SNOOZE_MS = 7 * 24 * 60 * 60 * 1000;

@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1809 |
+| Routes | 1813 |
 | Modules mounted | 141 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1809 mounted routes, grouped by path prefix.
+All 1813 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -368,6 +368,7 @@ All 1809 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/auth/2fa/verify` | — |
 | POST | `/api/tenant/auth/avatar` | — |
 | POST | `/api/tenant/auth/change-password` | — |
+| GET | `/api/tenant/auth/device` | — |
 | POST | `/api/tenant/auth/forgot-password` | — |
 | POST | `/api/tenant/auth/login` | — |
 | POST | `/api/tenant/auth/logout` | — |
@@ -378,10 +379,13 @@ All 1809 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/auth/passkey/login/verify` | — |
 | POST | `/api/tenant/auth/passkey/register/options` | — |
 | POST | `/api/tenant/auth/passkey/register/verify` | — |
-| GET | `/api/tenant/auth/pin/devices` | — |
-| DELETE | `/api/tenant/auth/pin/devices/:deviceId` | — |
+| DELETE | `/api/tenant/auth/pin` | — |
+| GET | `/api/tenant/auth/pin` | — |
+| PUT | `/api/tenant/auth/pin` | — |
+| GET | `/api/tenant/auth/pin/devices` | yes |
+| DELETE | `/api/tenant/auth/pin/devices/:deviceId` | yes |
 | POST | `/api/tenant/auth/pin/login` | — |
-| POST | `/api/tenant/auth/pin/register` | — |
+| POST | `/api/tenant/auth/pin/register` | yes |
 | POST | `/api/tenant/auth/refresh` | — |
 | POST | `/api/tenant/auth/reset-password` | — |
 

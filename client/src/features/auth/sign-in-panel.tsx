@@ -10,20 +10,34 @@
  *
  * ── WHICH CREDENTIAL LEADS ──────────────────────────────────────────────────
  *
- * The device remembers whose it is (`lastSessionStore`) and which quick
- * credentials it holds for them. The screen greets that person and leads with
- * the best route THIS DEVICE can complete:
+ * The device remembers whose it is (`lastSessionStore`) and which passkeys it
+ * holds for them. The screen greets that person and leads with the best route
+ * they have HERE:
  *
  *     1. a passkey that lives here   → the fingerprint orb, and the ceremony
  *                                      starts by itself when the window has
  *                                      focus (a browser that insists on a tap
  *                                      first just leaves the orb waiting)
- *     2. a Quick PIN set up here     → the four PIN boxes
+ *     2. their Quick PIN             → the four PIN boxes. The PIN belongs to
+ *                                      the PERSON (14230): set once, it works
+ *                                      on every device
  *     3. neither                     → the password
  *
- * The others stay one tap away underneath ("Use PIN", "Use password"), because
- * a credential can be revoked from another session and the person at the
- * machine must always have a way in.
+ * The others stay one tap away underneath ("Use Face ID", "Use PIN", "Use
+ * password"), because a credential can be revoked from another session and
+ * the person at the machine must always have a way in. "Use Face ID" is there
+ * on ANY device with its own authenticator, even when this browser has no
+ * record of a passkey: the record can be erased (by the browser, not by us)
+ * while the passkey itself is still in the OS keychain.
+ *
+ * ── THE DEVICE DOES NOT FORGET ──────────────────────────────────────────────
+ *
+ * Nothing on this screen erases the device's memory of its person. "Not you?"
+ * opens a blank sign-in for someone else and offers "Continue as …" back; the
+ * greeting changes only when a different person actually signs in. On mount the
+ * panel also asks the server what it remembers about this device
+ * (device-memory.ts), so a browser that erased its own storage still greets its
+ * person and still leads with their passkey.
  *
  * A passkey leads because it is the one credential that is two factors at once
  * (the device, and the fingerprint/face that unlocks it), cannot be phished,
@@ -46,7 +60,7 @@ import { PIN_LENGTH, PinInput, PinKeypad } from "@/components/ui/pin-input";
 import { lastSessionStore } from "@/lib/last-session";
 import { passkeyDeviceStore } from "@/lib/passkey-devices";
 import { passkeyOfferStore } from "@/lib/passkey-offer";
-import { pinStore } from "@/lib/pin-store";
+import { recallDevice } from "@/lib/device-memory";
 import {
   biometricName,
   deviceLabel,
@@ -72,7 +86,7 @@ import {
 export type SignInMode = "signin" | "unlock";
 type Stage = "credentials" | "twofa" | "forgot" | "forgot-sent" | "offer-passkey";
 type Route = "passkey" | "pin" | "password";
-type Identity = { email: string; display_name?: string | null; avatar_url?: string | null };
+type Identity = { email: string; display_name?: string | null; avatar_url?: string | null; has_quick_pin?: boolean };
 
 export function FingerprintIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
@@ -114,10 +128,8 @@ function friendly(err: unknown): string {
         return "Can't reach the server. Check your connection and try again.";
       case "RATE_LIMITED":
         return "Too many attempts from this network. Wait a few minutes, then try again.";
-      case "NO_PIN_DEVICE":
-        return "No Quick PIN is set up on this device for that email. Sign in with your password, then set one up in My security.";
       case "PIN_LOGIN_UNAVAILABLE":
-        return "Quick PIN is no longer available on this device. Sign in with your password.";
+        return "There's no Quick PIN on this account. Sign in with your password, then set one up in My security — it works on every device.";
       case "WEBAUTHN_NOT_SUPPORTED":
         return "Passkeys aren't supported on this browser yet.";
       default:
@@ -158,9 +170,12 @@ export function SignInPanel({
   const { branding } = useBranding();
   const brandName = branding.name || "Praxis LS";
 
-  const [remembered, setRemembered] = React.useState<Identity | null>(
-    () => identity ?? lastSessionStore.get(),
+  // "Not you?" opened this tab for someone else: start blank, WITHOUT the
+  // device forgetting its person (`deviceOwner` keeps them for "Continue as").
+  const [remembered, setRemembered] = React.useState<Identity | null>(() =>
+    identity ?? (mode === "signin" && lastSessionStore.someoneElse.active() ? null : lastSessionStore.get()),
   );
+  const [deviceOwner, setDeviceOwner] = React.useState<Identity | null>(() => lastSessionStore.get());
   const rememberedEmail = remembered?.email?.trim().toLowerCase() ?? "";
   const [stage, setStage] = React.useState<Stage>("credentials");
   const [email, setEmail] = React.useState(rememberedEmail);
@@ -174,22 +189,13 @@ export function SignInPanel({
    * watched fail.
    */
   const [registryVersion, bumpRegistry] = React.useReducer((n: number) => n + 1, 0);
-  const pinDevice = React.useMemo(
-    () => (rememberedEmail ? pinStore.get(rememberedEmail) : null),
+  /** The account's Quick PIN — one per person, so it is offered on ANY device. */
+  const pinHere = !!remembered?.has_quick_pin;
+  const passkeyHere = React.useMemo(
+    () => isPasskeySupported() && !!rememberedEmail && passkeyDeviceStore.get(rememberedEmail),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- registryVersion invalidates a localStorage read React cannot track.
     [rememberedEmail, registryVersion],
   );
-  const passkeyHere = React.useMemo(
-    () => isPasskeySupported() && !!rememberedEmail && passkeyDeviceStore.get(rememberedEmail),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- as above.
-    [rememberedEmail, registryVersion],
-  );
-  const defaultRoute: Route = passkeyHere ? "passkey" : pinDevice ? "pin" : "password";
-  const [routeChoice, setRouteChoice] = React.useState<Route | null>(null);
-  const routeAvailable = (r: Route) =>
-    r === "password" || (r === "pin" && !!pinDevice) || (r === "passkey" && passkeyHere);
-  const route: Route = routeChoice && routeAvailable(routeChoice) ? routeChoice : defaultRoute;
-
   const [password, setPassword] = React.useState("");
   const [showPw, setShowPw] = React.useState(false);
   const [code, setCode] = React.useState("");
@@ -202,6 +208,16 @@ export function SignInPanel({
   const [offerBusy, setOfferBusy] = React.useState(false);
   const [offerMsg, setOfferMsg] = React.useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [discoverable, setDiscoverable] = React.useState<boolean>(() => isPasskeySupported());
+
+  // The passkey LEADS where this device knows it holds one, and is always one
+  // tap away where the device has an authenticator of its own — the record of
+  // it can be lost while the passkey is still in the keychain.
+  const defaultRoute: Route = passkeyHere ? "passkey" : pinHere ? "pin" : "password";
+  const [routeChoice, setRouteChoice] = React.useState<Route | null>(null);
+  const routeAvailable = (r: Route) =>
+    r === "password" || (r === "pin" && pinHere) || (r === "passkey" && (passkeyHere || (discoverable && !!rememberedEmail)));
+
+  const route: Route = routeChoice && routeAvailable(routeChoice) ? routeChoice : defaultRoute;
 
   const emailRef = React.useRef<HTMLInputElement>(null);
   const pinEmailRef = React.useRef<HTMLInputElement>(null);
@@ -217,6 +233,39 @@ export function SignInPanel({
       alive = false;
     };
   }, []);
+
+  /**
+   * What the SERVER remembers about this device (device-memory.ts) — merged
+   * into the local records, never subtracted from them. After a browser erased
+   * its own storage this brings back the greeting and the passkey; otherwise it
+   * quietly refreshes the Quick PIN flag and the passkey ids.
+   */
+  const emailTyped = React.useRef("");
+  emailTyped.current = email;
+  // Someone already typing a PIN or password keeps the route they are on: the
+  // answer arriving must not swap the boxes out from under their fingers.
+  const typing = React.useRef({ route: route as Route, busy: false });
+  typing.current = { route, busy: pin.length > 0 || password.length > 0 };
+  React.useEffect(() => {
+    let alive = true;
+    void recallDevice().then((a) => {
+      if (!alive || !a) return;
+      const owner = lastSessionStore.get();
+      setDeviceOwner(owner);
+      setRemembered((r) => {
+        if (r) return r.email === a.email ? { ...r, has_quick_pin: !!a.has_quick_pin } : r;
+        // A blank screen becomes the greeting — unless someone else asked for
+        // the blank form, or has already started typing into it.
+        if (mode !== "signin" || lastSessionStore.someoneElse.active() || emailTyped.current) return r;
+        return owner;
+      });
+      if (typing.current.busy) setRouteChoice((c) => c ?? typing.current.route);
+      bumpRegistry();
+    });
+    return () => {
+      alive = false;
+    };
+  }, [mode]);
 
   // Focus: the field the current route needs. The PIN boxes focus themselves.
   React.useEffect(() => {
@@ -311,16 +360,17 @@ export function SignInPanel({
   /**
    * "Not you? Switch account". On the lock screen the host drops everything
    * and reloads — the previous person's work is in memory behind the blur. On
-   * the landing modal the device releases the remembered identity (credentials
-   * keyed by email survive; "Sign out and remove this account" destroys them)
-   * and hands over an empty, focused email field.
+   * the landing modal it hands over an empty, focused email field for SOMEONE
+   * ELSE — and forgets nothing: the device's person, their greeting and their
+   * passkey all stay, and "Continue as …" brings them straight back. Only a
+   * different person signing in changes whom the device greets.
    */
   function onSwitch() {
     if (mode === "unlock") {
       onSwitchAccount?.();
       return;
     }
-    lastSessionStore.clear();
+    lastSessionStore.someoneElse.start();
     setRemembered(null);
     setEmail("");
     setPassword("");
@@ -328,6 +378,19 @@ export function SignInPanel({
     setRouteChoice(null);
     clearErrors();
     setTab("password");
+  }
+
+  /** "Continue as Ama" — back from "Not you?" to the device's own person. */
+  function onContinueAsOwner() {
+    const owner = lastSessionStore.get();
+    if (!owner) return;
+    lastSessionStore.someoneElse.end();
+    setRemembered(owner);
+    setEmail(owner.email);
+    setPassword("");
+    setPin("");
+    setRouteChoice(null);
+    clearErrors();
   }
 
   // ── Quick PIN ────────────────────────────────────────────────────────────
@@ -355,15 +418,20 @@ export function SignInPanel({
     setBusy(true);
     clearErrors();
     try {
-      await pinLogin(target, entered);
-      setRemembered(lastSessionStore.get() ?? remembered);
-      await afterSignIn(target, "pin");
+      const { pending2fa } = await pinLogin(target, entered);
+      // An account with an authenticator app: the code follows the PIN, as it
+      // follows the password.
+      if (pending2fa) setStage("twofa");
+      else {
+        setRemembered(lastSessionStore.get() ?? remembered);
+        await afterSignIn(target, "pin");
+      }
     } catch (err) {
       setPin("");
       if (err instanceof ApiError && (err.code === "PIN_LOCKED" || err.code === "PIN_LOGIN_UNAVAILABLE")) {
-        // auth-context has removed this device's PIN record; re-read so the
-        // screen moves to the password instead of offering dead boxes.
-        bumpRegistry();
+        // The account has no PIN any more, on any device: move to the password
+        // instead of offering dead boxes.
+        setRemembered((r) => (r ? { ...r, has_quick_pin: false } : r));
         setRouteChoice("password");
       }
       setError(friendly(err));
@@ -498,13 +566,13 @@ export function SignInPanel({
                 : "Sign in to your command center.";
 
   const alternatives: { key: Route; label: string; icon: React.ReactNode }[] = [];
-  if (passkeyHere && route !== "passkey")
+  if (routeAvailable("passkey") && route !== "passkey")
     alternatives.push({
       key: "passkey",
       label: `Use ${bio === "your passkey" ? "passkey" : bio}`,
       icon: <FingerprintIcon width={14} height={14} />,
     });
-  if (pinDevice && route !== "pin")
+  if (pinHere && route !== "pin")
     alternatives.push({ key: "pin", label: "Use PIN", icon: <HashIcon width={14} height={14} /> });
   if (route !== "password")
     alternatives.push({ key: "password", label: "Use password", icon: <KeyIcon width={14} height={14} /> });
@@ -593,7 +661,7 @@ export function SignInPanel({
       <form onSubmit={onPin} className="flex flex-col gap-3" noValidate>
         <div className="flex items-center justify-between">
           <span className="login-label">Quick PIN</span>
-          <span className="login-hint">This device only · {PIN_LENGTH} digits</span>
+          <span className="login-hint">Works on any device · {PIN_LENGTH} digits</span>
         </div>
         <PinInput
           value={pin}
@@ -768,7 +836,7 @@ export function SignInPanel({
                 </div>
               </div>
               {pinBlock(false)}
-              <p className="login-note">A Quick PIN works only on the device where you set it up. New device? Use your password.</p>
+              <p className="login-note">Your Quick PIN works on every device. No PIN yet? Sign in with your password, then set one up in My security.</p>
             </div>
           )}
 
@@ -793,6 +861,14 @@ export function SignInPanel({
                 {passkeyBusy ? "Waiting for your device…" : "Sign in with a passkey"}
               </button>
             </div>
+          )}
+
+          {/* Back from "Not you?" — the device never stopped knowing them. */}
+          {mode === "signin" && deviceOwner && (
+            <button type="button" className="login-back mt-4 justify-center" onClick={onContinueAsOwner}>
+              <ArrowLeftIcon width={14} height={14} /> Continue as{" "}
+              {(deviceOwner.display_name || deviceOwner.email.split("@")[0]).trim().split(/\s+/)[0]}
+            </button>
           )}
         </>
       )}

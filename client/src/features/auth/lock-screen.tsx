@@ -33,6 +33,7 @@ import { useBranding } from "@/app/branding/branding-context";
 import { LockIcon, ShieldIcon } from "@/components/ui/icons";
 import { currentLocale } from "@/lib/i18n";
 import { SignInPanel } from "./sign-in-panel";
+import { lastSessionStore } from "@/lib/last-session";
 
 const SKIP = new Set(["SCRIPT", "STYLE", "LINK", "TEMPLATE", "NOSCRIPT", "META"]);
 
@@ -193,7 +194,18 @@ export function LockLayer({ maxAgeMin = 120 }: { maxAgeMin?: number }) {
           titleId={titleId}
           identity={
             identity
-              ? { email: identity.email, display_name: identity.display_name, avatar_url: identity.avatar_url }
+              ? {
+                  email: identity.email,
+                  display_name: identity.display_name,
+                  avatar_url: identity.avatar_url,
+                  // One PIN per person, any device. A user record cached before
+                  // the flag existed falls back to the device's own note of it.
+                  has_quick_pin:
+                    identity.has_quick_pin ??
+                    (lastSessionStore.get()?.email === identity.email.trim().toLowerCase()
+                      ? lastSessionStore.get()?.has_quick_pin
+                      : false),
+                }
               : null
           }
           reason={reasonText(reasonShown, maxAgeMin)}

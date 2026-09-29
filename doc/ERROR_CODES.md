@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 6× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (672)
+## All codes (671)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -498,7 +498,6 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `PERMISSION_DENIED` | 403 | 10× | — |
 | `PERSONAL_MAILBOX` | — | 1× | — |
 | `PERSONAL_MAILBOX_EXISTS` | — | 1× | — |
-| `PIN_DEVICE_LIMIT` | — | 1× | — |
 | `PIN_EXPIRED` | 422 | 1× | — |
 | `PIN_LOGIN_UNAVAILABLE` | 401 | 1× | — |
 | `PLACE_NAME_TAKEN` | 409 | 1× | — |

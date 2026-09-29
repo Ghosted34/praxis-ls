@@ -1,9 +1,13 @@
 /**
  * My Security (self-service) — a passkey for THIS device (first, because it is
  * the fastest and safest way in and the one the lock screen leads with), your
- * password, an authenticator app, and a device-bound Quick PIN. Talks to the
- * tenant auth routes: /auth/passkey/*, /auth/change-password,
- * /auth/2fa/setup|enable|disable, /auth/pin/register|devices.
+ * password, an authenticator app, and your Quick PIN (one per person, valid on
+ * every device). Talks to the tenant auth routes: /auth/passkey/*,
+ * /auth/change-password, /auth/2fa/setup|enable|disable, /auth/pin.
+ *
+ * Removing a passkey here is the ONE way a passkey leaves a device (owner
+ * decision, 29 Sep 2026) — so it also tells the device's own passkey manager,
+ * which then stops offering it.
  *
  * Adding a way in (a passkey, a PIN) on a session that is no longer fresh asks
  * for the password first — the server answers REAUTH_REQUIRED and `withReauth`
@@ -21,7 +25,6 @@ import { UploadProgress } from "@/components/ui/upload-progress";
 import { useUpload } from "@/lib/use-upload";
 import { fileToDataUrl } from "@/lib/image-compress";
 import { PIN_LENGTH } from "@/components/ui/pin-input";
-import { pinStore } from "@/lib/pin-store";
 import { cn } from "@/lib/cn";
 import { useSearchParams } from "react-router-dom";
 import {
@@ -29,10 +32,11 @@ import {
   setupTotp,
   enableTotp,
   disableTotp,
-  listPinDevices,
-  revokePinDevice,
+  getQuickPin,
+  setQuickPin,
+  removeQuickPin,
   type TotpSetup,
-  type PinDeviceRow,
+  type QuickPinStatus,
 } from "@/lib/security-api";
 import {
   registerPasskey,
@@ -43,9 +47,11 @@ import {
   isPasskeyCancel,
   isPasskeySupported,
   platformAuthenticatorAvailable,
+  signalPasskeyGone,
   type PasskeyCredential,
 } from "@/lib/webauthn";
 import { passkeyDeviceStore } from "@/lib/passkey-devices";
+import { lastSessionStore } from "@/lib/last-session";
 import { quickPin } from "@praxis/shared";
 import { useConfirm } from "@/components/ui/use-confirm";
 import { usePrompt } from "@/components/ui/use-prompt";
@@ -69,7 +75,7 @@ function errText(e: unknown): string {
 }
 
 export function MySecurityPage() {
-  const { user, registerPin, patchUser } = useAuth();
+  const { user, patchUser } = useAuth();
 
   // --- Profile picture ---
   const [avatarMsg, setAvatarMsg] = React.useState<Msg>(null);
@@ -238,67 +244,72 @@ export function MySecurityPage() {
     }
   }
 
-  // --- Quick PIN ---
-  const [devices, setDevices] = React.useState<PinDeviceRow[] | null>(null);
+  // --- Quick PIN — one per person, valid on every device ---
+  const [pinStatus, setPinStatus] = React.useState<QuickPinStatus | null>(null);
   const [pin, setPin] = React.useState("");
   const [pin2, setPin2] = React.useState("");
-  const [label, setLabel] = React.useState(() => deviceLabel());
   const [pinBusy, setPinBusy] = React.useState(false);
   const [pinMsg, setPinMsg] = React.useState<Msg>(null);
-  const thisDeviceId = email ? pinStore.get(email)?.device_id : null;
-  const hasPinHere = !!thisDeviceId && !!devices?.some((d) => d.device_id === thisDeviceId && d.status === "ACTIVE");
+  const hasPin = !!pinStatus?.enabled;
   // The shared rule (@praxis/shared quickPin) — the same one the server applies,
   // shown as the user types rather than as a 422 after pressing the button.
   const pinWeak = pin.length === PIN_LENGTH ? quickPin.weakPinReason(pin) : null;
   const pinMismatch = pin2.length === PIN_LENGTH && pin !== pin2;
   const pinReady = pin.length === PIN_LENGTH && !pinWeak && pin === pin2;
 
-  const loadDevices = React.useCallback(() => {
-    listPinDevices()
-      .then(setDevices)
-      .catch(() => setDevices([]));
-  }, []);
-  React.useEffect(() => loadDevices(), [loadDevices]);
+  /** The account's PIN changed: the cached user and the device greeting follow. */
+  const notePin = React.useCallback(
+    (on: boolean) => {
+      patchUser({ has_quick_pin: on });
+      if (email) lastSessionStore.setQuickPin(email, on);
+    },
+    [patchUser, email],
+  );
 
-  async function onRegister(e: React.FormEvent) {
+  const loadPin = React.useCallback(() => {
+    getQuickPin()
+      .then(setPinStatus)
+      .catch(() => setPinStatus({ enabled: false, created_at: null, updated_at: null, last_used_at: null }));
+  }, []);
+  React.useEffect(() => loadPin(), [loadPin]);
+
+  async function onSetPin(e: React.FormEvent) {
     e.preventDefault();
     if (!pinReady) return;
     setPinBusy(true);
     setPinMsg(null);
     try {
-      const done = await withReauth((pw) => registerPin(pin, label.trim() || null, pw));
+      const done = await withReauth((pw) => setQuickPin(pin, pw));
       if (!done) return;
       setPin("");
       setPin2("");
+      setPinStatus(done);
+      notePin(true);
       setPinMsg({
         kind: "ok",
-        text: hasPinHere
-          ? "This device's PIN was changed. The old one no longer works."
-          : "Quick PIN is set up on this device. When your session locks, four digits unlock it.",
+        text: hasPin
+          ? "Your Quick PIN was changed. The old one no longer works on any device."
+          : "Quick PIN is set up. It signs you in on this device and every other one — your phone, your laptop, anywhere.",
       });
-      loadDevices();
     } catch (err) {
       setPinMsg({ kind: "err", text: errText(err) });
     } finally {
       setPinBusy(false);
     }
   }
-  async function onRevoke(d: PinDeviceRow) {
-    const here = thisDeviceId === d.device_id;
+  async function onRemovePin() {
     const ok = await confirm({
-      title: here ? "Turn off Quick PIN on this device?" : `Revoke the Quick PIN on "${d.label || "Unnamed device"}"?`,
-      body: here
-        ? "You'll sign in here with your passkey or password instead. You can set a new PIN up any time."
-        : "That device will stop accepting the PIN straight away. Do this for a device you've lost or no longer use.",
-      confirmLabel: here ? "Turn off Quick PIN" : "Revoke PIN",
+      title: "Turn off your Quick PIN?",
+      body: "It will stop signing you in on every device. Your passkeys and password still work, and you can set a new PIN any time.",
+      confirmLabel: "Turn off Quick PIN",
       destructive: true,
     });
     if (!ok) return;
     try {
-      await revokePinDevice(d.device_id);
-      if (here && email) pinStore.remove(email);
-      setPinMsg({ kind: "ok", text: here ? "Quick PIN is off on this device." : "That device's PIN was revoked." });
-      loadDevices();
+      await removeQuickPin();
+      notePin(false);
+      setPinMsg({ kind: "ok", text: "Quick PIN is off on every device." });
+      loadPin();
     } catch (err) {
       setPinMsg({ kind: "err", text: errText(err) });
     }
@@ -404,7 +415,12 @@ export function MySecurityPage() {
     if (!ok) return;
     try {
       await deletePasskey(c.credential_id);
-      if (here) passkeyDeviceStore.forgetId(email, c.credential_id);
+      passkeyDeviceStore.forgetId(email, c.credential_id);
+      // The explicit removal is what takes a passkey off a device — tell this
+      // device's passkey manager, so it stops offering it here. (A synced
+      // passkey leaves every device on the same account; one that lives
+      // elsewhere is simply not in this keychain, and nothing happens.)
+      void signalPasskeyGone(c.credential_id);
       setPkMsg({ kind: "ok", text: "Passkey removed." });
       loadPasskeys();
     } catch (err) {
@@ -500,7 +516,7 @@ export function MySecurityPage() {
         >
           <SettingsCard
             title={`Passkey — ${bio === "your passkey" ? "one-touch sign-in" : bio}`}
-            desc="One touch signs you in and unlocks your session. It belongs to this device alone — your laptop uses the laptop's, your phone uses the phone's — and there is nothing to type, so nothing to phish."
+            desc="One touch signs you in, unlocks your session and signs documents. It belongs to this device alone — your laptop uses the laptop's, your phone uses the phone's — and it stays until you remove it here: signing out never removes it."
           >
             {!passkeySupported || platformOk === false ? (
               <p className="text-sm text-muted-foreground">
@@ -744,83 +760,70 @@ export function MySecurityPage() {
             )}
           </SettingsCard>
 
-          {/* Quick PIN */}
+          {/* Quick PIN — one per person, every device */}
           <SettingsCard
             title="Quick PIN"
-            desc="Four digits that unlock your session on THIS device only. Five wrong tries switch it off."
+            desc="Four digits that sign you in on any device — your phone, your laptop, anywhere. Five wrong tries in a row switch it off everywhere. If you use an authenticator app, it still asks for its code after the PIN."
           >
-            <form onSubmit={onRegister} className="flex flex-col gap-3" noValidate>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field label={hasPinHere ? `New PIN (${PIN_LENGTH} digits)` : `PIN (${PIN_LENGTH} digits)`}>
-                  <Input
-                    type="password"
-                    inputMode="numeric"
-                    autoComplete="off"
-                    value={pin}
-                    onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, PIN_LENGTH))}
-                    placeholder="••••"
-                    aria-invalid={!!pinWeak || undefined}
-                  />
-                </Field>
-                <Field label="Confirm PIN">
-                  <Input
-                    type="password"
-                    inputMode="numeric"
-                    autoComplete="off"
-                    value={pin2}
-                    onChange={(e) => setPin2(e.target.value.replace(/\D/g, "").slice(0, PIN_LENGTH))}
-                    placeholder="••••"
-                    aria-invalid={pinMismatch || undefined}
-                  />
-                </Field>
-              </div>
-              {pinWeak && <p className="text-xs text-[rgb(var(--bad))]">{pinWeak}</p>}
-              {!pinWeak && pinMismatch && <p className="text-xs text-[rgb(var(--bad))]">The two PINs don&apos;t match.</p>}
-              <Field label="Device name">
-                <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="My laptop" maxLength={80} />
-              </Field>
-              <div className="flex flex-wrap items-center gap-3">
-                <Button type="submit" loading={pinBusy} disabled={!pinReady}>
-                  {hasPinHere ? "Change this device's PIN" : "Set up Quick PIN here"}
-                </Button>
-                {hasPinHere && (
-                  <span className="text-xs text-muted-foreground">Replaces the PIN on this device — the old one stops working.</span>
-                )}
-              </div>
-            </form>
-
-            <div className="mt-5 border-t pt-4">
-              <p className="micro mb-2">Devices with a Quick PIN</p>
-              {devices === null ? (
-                <p className="text-sm text-muted-foreground">{tr("Loading…")}</p>
-              ) : devices.filter((d) => d.status === "ACTIVE").length === 0 ? (
-                <p className="text-sm text-muted-foreground">No device has a Quick PIN yet.</p>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  {devices
-                    .filter((d) => d.status === "ACTIVE")
-                    .map((d) => (
-                      <div key={d.device_id} className="flex items-center justify-between gap-3 rounded-lg border p-3">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 text-sm font-medium">
-                            <span className="truncate">{d.label || "Unnamed device"}</span>
-                            {thisDeviceId === d.device_id && (
-                              <span className="status st-ok !py-0.5 !text-[9px]">this device</span>
-                            )}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            Added {dateFmt(d.created_at)}
-                            {d.last_used_at ? ` · last used ${fmtRelative(d.last_used_at)}` : " · never used"}
-                          </div>
-                        </div>
-                        <Button variant="ghost" size="sm" onClick={() => void onRevoke(d)}>
-                          {thisDeviceId === d.device_id ? "Turn off" : "Revoke"}
-                        </Button>
+            {pinStatus === null ? (
+              <p className="text-sm text-muted-foreground">{tr("Loading…")}</p>
+            ) : (
+              <>
+                {hasPin && (
+                  <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border p-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 text-sm font-medium">
+                        Your Quick PIN
+                        <span className="status st-ok !py-0.5 !text-[9px]">on · every device</span>
                       </div>
-                    ))}
-                </div>
-              )}
-            </div>
+                      <div className="text-xs text-muted-foreground">
+                        {pinStatus.updated_at ? `Set ${dateFmt(pinStatus.updated_at)}` : "Set"}
+                        {pinStatus.last_used_at ? ` · last used ${fmtRelative(pinStatus.last_used_at)}` : " · never used"}
+                      </div>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => void onRemovePin()}>
+                      Turn off
+                    </Button>
+                  </div>
+                )}
+                <form onSubmit={onSetPin} className="flex flex-col gap-3" noValidate>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label={hasPin ? `New PIN (${PIN_LENGTH} digits)` : `PIN (${PIN_LENGTH} digits)`}>
+                      <Input
+                        type="password"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        value={pin}
+                        onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, PIN_LENGTH))}
+                        placeholder="••••"
+                        aria-invalid={!!pinWeak || undefined}
+                      />
+                    </Field>
+                    <Field label="Confirm PIN">
+                      <Input
+                        type="password"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        value={pin2}
+                        onChange={(e) => setPin2(e.target.value.replace(/\D/g, "").slice(0, PIN_LENGTH))}
+                        placeholder="••••"
+                        aria-invalid={pinMismatch || undefined}
+                      />
+                    </Field>
+                  </div>
+                  {pinWeak && <p className="text-xs text-[rgb(var(--bad))]">{pinWeak}</p>}
+                  {!pinWeak && pinMismatch && <p className="text-xs text-[rgb(var(--bad))]">The two PINs don&apos;t match.</p>}
+                  <div className="flex flex-wrap items-center gap-3">
+                    <Button type="submit" loading={pinBusy} disabled={!pinReady}>
+                      {hasPin ? "Change Quick PIN" : "Set up Quick PIN"}
+                    </Button>
+                    {hasPin && (
+                      <span className="text-xs text-muted-foreground">The old PIN stops working on every device.</span>
+                    )}
+                  </div>
+                </form>
+              </>
+            )}
 
             {pinMsg && (
               <p className={`mt-4 ${pinMsg.kind === "ok" ? okCls : errCls}`} role="status">

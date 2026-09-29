@@ -2,10 +2,10 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 141,
-  "route_count": 1809,
+  "route_count": 1813,
   "tiers": {
-    "public": 74,
-    "self-scoped": 109,
+    "public": 75,
+    "self-scoped": 112,
     "gated": 1626
   },
   "routes": {
@@ -75,10 +75,16 @@
       "validated": false,
       "tier": "self-scoped"
     },
-    "DELETE /api/tenant/auth/pin/devices/:deviceId": {
+    "DELETE /api/tenant/auth/pin": {
       "auth": true,
       "rbac": false,
       "validated": false,
+      "tier": "self-scoped"
+    },
+    "DELETE /api/tenant/auth/pin/devices/:deviceId": {
+      "auth": true,
+      "rbac": false,
+      "validated": true,
       "tier": "self-scoped"
     },
     "DELETE /api/tenant/campaigns/senders/:id": {
@@ -1359,6 +1365,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/auth/device": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
     "GET /api/tenant/auth/me": {
       "auth": true,
       "rbac": false,
@@ -1371,10 +1383,16 @@
       "validated": false,
       "tier": "self-scoped"
     },
-    "GET /api/tenant/auth/pin/devices": {
+    "GET /api/tenant/auth/pin": {
       "auth": true,
       "rbac": false,
       "validated": false,
+      "tier": "self-scoped"
+    },
+    "GET /api/tenant/auth/pin/devices": {
+      "auth": true,
+      "rbac": false,
+      "validated": true,
       "tier": "self-scoped"
     },
     "GET /api/tenant/branding/": {
@@ -6840,7 +6858,7 @@
     "POST /api/tenant/auth/pin/register": {
       "auth": true,
       "rbac": false,
-      "validated": false,
+      "validated": true,
       "tier": "self-scoped"
     },
     "POST /api/tenant/auth/refresh": {
@@ -10580,6 +10598,12 @@
       "rbac": true,
       "validated": false,
       "tier": "gated"
+    },
+    "PUT /api/tenant/auth/pin": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
     },
     "PUT /api/tenant/branding/": {
       "auth": true,

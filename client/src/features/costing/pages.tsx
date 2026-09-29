@@ -2242,6 +2242,7 @@ export function RegiePage() {
           subtitle={tr(
             "Open advances at or near their own policy window — chase these before they reclassify to 4211.",
           )}
+          className="mb-4"
         >
           <DataList
             columns={watchColumns}

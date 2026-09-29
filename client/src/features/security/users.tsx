@@ -686,6 +686,7 @@ export function UsersPage() {
       {notice && (
         <Callout
           tone="info"
+          className="mb-4"
           action={
             <Button size="sm" variant="ghost" onClick={() => setNotice(null)}>
               Dismiss

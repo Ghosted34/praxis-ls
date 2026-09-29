@@ -138,7 +138,11 @@ export function DeliverabilityPage() {
       <div className="mb-3 flex justify-end">
         <Button size="sm" onClick={recheck} loading={busy}>{t("mail.recheckNow")}</Button>
       </div>
-      {error && <ErrorState message={error} />}
+      {error && (
+        <div className="mb-4">
+          <ErrorState message={error} />
+        </div>
+      )}
       <ul className="space-y-2">
         {byDomain.map(([domain, checks]) => {
           const worst = checks.some((c) => c.verdict === "FAIL") ? "FAIL"

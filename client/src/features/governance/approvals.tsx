@@ -214,7 +214,11 @@ export function ApprovalsPage() {
           value={num(list.filter((r) => r.step_kind === "APPROVE").length)}
         />
       </KpiRow>
-      {actError && <ErrorState message={actError} />}
+      {actError && (
+        <div className="mb-4">
+          <ErrorState message={actError} />
+        </div>
+      )}
       <DataList
         columns={columns}
         rows={rows}

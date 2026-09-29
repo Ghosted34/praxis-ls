@@ -25,7 +25,6 @@ import {
 } from "@/components/settings/controls";
 import { FontPicker } from "@/components/settings/font-picker";
 import { fontByValue } from "@/lib/fonts";
-import { cn } from "@/lib/cn";
 import { useFieldHighlight } from "@/lib/use-url-tab";
 
 /**
@@ -103,6 +102,46 @@ export function AppearancePage() {
     setRadius(branding.radius || "");
   }, [ready, branding]);
 
+  // What is saved right now, in the same shape as the form state. Save is
+  // enabled only when the form differs from it — a muted button says "nothing
+  // to save" without a message, and an accidental tap cannot re-post the same
+  // values. `branding` is replaced by the saved row on success, so a save
+  // re-baselines and the button goes quiet again by itself.
+  const current = JSON.stringify([
+    name,
+    theme,
+    colors,
+    logoUrl,
+    logoAltUrl,
+    faviconUrl,
+    fontDisplay,
+    fontBody,
+    fontMono,
+    radius,
+  ]);
+  const saved = React.useMemo(() => {
+    const seed: Record<string, string> = {};
+    for (const { key } of COLORS)
+      seed[key] = (branding[key] as string | null) || "";
+    return JSON.stringify([
+      branding.name || "",
+      branding.theme || "dark",
+      seed,
+      branding.logoUrl || "",
+      branding.logoAltUrl || "",
+      branding.faviconUrl || "",
+      branding.fontDisplay || "",
+      branding.fontBody || "",
+      branding.fontMono || "",
+      branding.radius || "",
+    ]);
+  }, [branding]);
+  const dirty = ready && current !== saved;
+  // A "Saved" note stops being true the moment the form is edited again.
+  React.useEffect(() => {
+    if (dirty) setMsg((m) => (m?.kind === "ok" ? null : m));
+  }, [dirty]);
+
   const setColor = (k: string, v: string) =>
     setColors((c) => ({ ...c, [k]: v }));
   const primary = colors.primary || "#0f766e";
@@ -143,12 +182,42 @@ export function AppearancePage() {
   }
 
   return (
-    <section className={cn(pageShell.reading, "pb-24")}>
-      <PageHeader
-        eyebrow={<HubCrumb area="Settings" to="/settings" />}
-        title="Appearance"
-        description="White-label the workspace — identity, colours, logos, type. Changes apply on save."
-      />
+    <section className={pageShell.reading}>
+      {/* The header IS the save bar: Save sits at the right of the title and
+          the whole strip sticks to the top of <main> (the app's scroll
+          container). It used to be a fixed footer, which on a phone sat on
+          top of the colour rows and the bottom nav's own floating button.
+          Negative margins bleed the opaque strip over <main>'s padding so
+          content scrolls cleanly underneath instead of peeking round it. */}
+      <div className="sticky top-0 z-20 -mx-4 -mt-4 bg-background px-4 pt-4 md:-mx-6 md:-mt-6 md:px-6 md:pt-6">
+        <PageHeader
+          eyebrow={<HubCrumb area="Settings" to="/settings" />}
+          title="Appearance"
+          description="White-label the workspace — identity, colours, logos, type. Changes apply on save."
+          action={
+            <Button
+              loading={busy}
+              onClick={onSave}
+              disabled={!dirty || busy}
+              title={dirty ? undefined : tr("No unsaved changes")}
+            >
+              {busy ? "Saving…" : "Save changes"}
+            </Button>
+          }
+        />
+        {msg && (
+          <p
+            role={msg.kind === "err" ? "alert" : "status"}
+            className={
+              msg.kind === "ok"
+                ? "-mt-2 mb-3 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm"
+                : "-mt-2 mb-3 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+            }
+          >
+            {msg.text}
+          </p>
+        )}
+      </div>
 
       <div className="mt-2 flex flex-col gap-5">
         <SettingsCard
@@ -423,26 +492,6 @@ export function AppearancePage() {
             );
           })()}
         </SettingsCard>
-
-        {msg && (
-          <p
-            className={
-              msg.kind === "ok"
-                ? "rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm"
-                : "rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive"
-            }
-          >
-            {msg.text}
-          </p>
-        )}
-      </div>
-
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-card/90 p-3 backdrop-blur">
-        <div className="mx-auto flex max-w-3xl items-center justify-end gap-3">
-          <Button loading={busy} onClick={onSave}>
-            {busy ? "Saving…" : "Save changes"}
-          </Button>
-        </div>
       </div>
     </section>
   );

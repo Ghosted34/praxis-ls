@@ -17,8 +17,14 @@
  * enough to navigate.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 
 import { useRecordOpener } from "./record-360";
 import { Record360Page } from "@/components/record-360";
@@ -26,17 +32,28 @@ import { Record360Page } from "@/components/record-360";
 type Row = { id: string; ref: string };
 const ROWS: Row[] = [{ id: "r-1", ref: "SBX-CST-0002" }];
 
+/** The router's own navigate, for the steps a test takes outside the list. */
+const nav: { go: ReturnType<typeof useNavigate> } = {} as never;
+
 /** Every address the router has shown, in order — a bounce is a visit. */
 function LocationLog({ into }: { into: string[] }) {
   const loc = useLocation();
+  nav.go = useNavigate();
   const at = loc.pathname + loc.search;
   if (into[into.length - 1] !== at) into.push(at);
   return <output data-testid="loc">{at}</output>;
 }
 
 function List() {
-  const { sheetId } = useRecordOpener("/things", ROWS, (r) => r.id);
-  return sheetId ? <div role="dialog">{sheetId}</div> : <p>the list</p>;
+  const { sheetId, openRecord } = useRecordOpener("/things", ROWS, (r) => r.id);
+  return (
+    <>
+      <button type="button" onClick={() => openRecord(ROWS[0])}>
+        SBX-CST-0002
+      </button>
+      {sheetId ? <div role="dialog">{sheetId}</div> : <p>the list</p>}
+    </>
+  );
 }
 
 function Page({ onPaint }: { onPaint: () => void }) {
@@ -58,6 +75,7 @@ function renderApp(at: string, log: string[], onPaint = () => {}) {
       <Routes>
         <Route path="/things" element={<List />} />
         <Route path="/things/:id" element={<Page onPaint={onPaint} />} />
+        <Route path="/documents/:docType/:id" element={<p>the document</p>} />
       </Routes>
       <LocationLog into={log} />
     </MemoryRouter>,
@@ -97,6 +115,28 @@ describe("record 360 · on a phone", () => {
     expect(await screen.findByRole("dialog")).toHaveTextContent("r-1");
     await new Promise((r) => setTimeout(r, 50));
     expect(log).toEqual(["/things/r-1", "/things?focus=r-1"]);
+  });
+
+  it("comes Back from a page the sheet opened onto the sheet, and stays", async () => {
+    // The reported path: tap a row, Print / preview (a route of its own),
+    // Back. Back remounts the list with `?focus=` already in the address —
+    // exactly the first frame that used to bounce.
+    const log: string[] = [];
+    renderApp("/things", log);
+    act(() => screen.getByRole("button", { name: "SBX-CST-0002" }).click());
+    await screen.findByRole("dialog");
+    act(() => nav.go("/documents/COSTING/r-1"));
+    await screen.findByText("the document");
+    act(() => nav.go(-1));
+
+    expect(await screen.findByRole("dialog")).toHaveTextContent("r-1");
+    await new Promise((r) => setTimeout(r, 50));
+    expect(log).toEqual([
+      "/things",
+      "/things?focus=r-1",
+      "/documents/COSTING/r-1",
+      "/things?focus=r-1",
+    ]);
   });
 
   it("never paints the page body, not even for the first frame", async () => {

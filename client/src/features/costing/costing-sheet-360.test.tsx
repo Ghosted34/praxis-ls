@@ -27,6 +27,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { Route, Routes, useLocation } from "react-router-dom";
 
 import {
   apiClientMock,
@@ -500,5 +501,94 @@ describe("on a phone, a costing opens as a full-screen sheet", () => {
     expect(sheet).toHaveTextContent("CST-2026-0043");
     // The worksheet's own content, not an empty shell.
     expect(await screen.findByText(/Ocean Freight/)).toBeInTheDocument();
+  });
+});
+
+/*
+ * 6. PRINT / PREVIEW NEVER SHOWS A SHEET THE PRICER IS NOT LOOKING AT. The
+ *    document page renders the SAVED costing and opening it leaves the
+ *    worksheet, so with edits in the buffer the preview came up without them —
+ *    on a new sheet, empty — and they were gone on the way back.
+ */
+describe("Print / preview", () => {
+  function LocationProbe() {
+    const loc = useLocation();
+    return <output data-testid="loc">{loc.pathname}</output>;
+  }
+
+  const renderWithPreview = () =>
+    renderScreen(
+      <>
+        <Routes>
+          <Route
+            path="/costing/costing/:costingId"
+            element={<CostingSheet360Page />}
+          />
+          <Route path="/documents/:docType/:id" element={<p>document page</p>} />
+        </Routes>
+        <LocationProbe />
+      </>,
+      {
+        path: `/costing/costing/${ID}`,
+        routes: {
+          [`/costings/${ID}`]: SHEET,
+          "/tax-codes/sales": VAT_CODES,
+          "/users": [{ user_id: "u-2", full_name: "Jean Mballa" }],
+        },
+      },
+    );
+
+  afterEach(() => {
+    // The edit below leaves an unsaved-work rescue behind (`useFormDraft`).
+    localStorage.clear();
+  });
+
+  it("opens straight away when there is nothing unsaved", async () => {
+    const user = userEvent.setup();
+    renderWithPreview();
+    await user.click(
+      await screen.findByRole("button", { name: "Print / preview" }),
+    );
+
+    expect(await screen.findByText("document page")).toBeInTheDocument();
+    expect(screen.getByTestId("loc")).toHaveTextContent(
+      `/documents/COSTING/${ID}`,
+    );
+  });
+
+  it("saves the edits first, then opens the preview", async () => {
+    const user = userEvent.setup();
+    renderWithPreview();
+    await user.type(await screen.findByLabelText("Remarks"), " Rechecked.");
+    await user.click(screen.getByRole("button", { name: "Print / preview" }));
+
+    expect(
+      await screen.findByText("Save your changes before previewing?"),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Save and preview" }));
+
+    // Saved BEFORE leaving — the document page reads the saved costing.
+    expect(await screen.findByText("Costing saved")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByTestId("loc")).toHaveTextContent(
+        `/documents/COSTING/${ID}`,
+      ),
+    );
+  });
+
+  it("stays on the worksheet, edits intact, on Go back", async () => {
+    const user = userEvent.setup();
+    renderWithPreview();
+    const remarks = await screen.findByLabelText("Remarks");
+    await user.type(remarks, " Rechecked.");
+    await user.click(screen.getByRole("button", { name: "Print / preview" }));
+    await user.click(await screen.findByRole("button", { name: "Go back" }));
+
+    expect(screen.getByTestId("loc")).toHaveTextContent(
+      `/costing/costing/${ID}`,
+    );
+    expect(screen.getByLabelText("Remarks")).toHaveValue(
+      "Carrier rate confirmed 25/07. Rechecked.",
+    );
   });
 });

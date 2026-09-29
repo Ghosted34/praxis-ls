@@ -244,8 +244,8 @@ export function CostingSheet360({
     onChanged?.();
   }, [reload, onChanged]);
 
-  async function save() {
-    if (!lines) return;
+  async function save(): Promise<boolean> {
+    if (!lines) return false;
     setBusy(true);
     setError(null);
     try {
@@ -264,8 +264,10 @@ export function CostingSheet360({
       setDirty(false);
       toast.success(tr("Costing saved"));
       refresh();
+      return true;
     } catch (err) {
       setError(errMsg(err));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -305,6 +307,36 @@ export function CostingSheet360({
 
   const parsedRate = Number(rateText);
   const sheetRate = currency === "XAF" ? 1 : parsedRate > 0 ? parsedRate : 1;
+  // Below this a save would store the fallback rate of 1, not the one typed.
+  const canSave = currency === "XAF" || parsedRate > 0;
+
+  /*
+   * Print / preview renders the SAVED costing, and opening it leaves this
+   * screen. With edits in the buffer that was two defects at once: the preview
+   * came up without the lines just priced (on a new sheet, empty), and the
+   * edits were gone on the way back. So an unsaved sheet is saved first, the
+   * same offer Submit makes.
+   */
+  async function beforePreview(): Promise<boolean> {
+    if (!dirty) return true;
+    if (!canSave) {
+      setError(
+        tr(
+          "Enter the exchange rate and save before previewing — the preview is printed from the saved costing.",
+        ),
+      );
+      return false;
+    }
+    const ok = await confirm({
+      title: tr("Save your changes before previewing?"),
+      body: tr(
+        "The preview is printed from the saved costing, so the lines you have edited are not on it until they are saved.",
+      ),
+      confirmLabel: tr("Save and preview"),
+      cancelLabel: tr("Go back"),
+    });
+    return ok ? save() : false;
+  }
 
   /**
    * Re-price every line at once into a new currency and/or rate (meeting 5).
@@ -391,6 +423,7 @@ export function CostingSheet360({
         id={c.costing_id}
         title={c.doc_number || tr("Costing sheet")}
         label={tr("Print / preview")}
+        beforeOpen={beforePreview}
       />
       {editable && (
         <>
@@ -401,11 +434,7 @@ export function CostingSheet360({
           >
             {tr("Suggest charges")}
           </Button>
-          <Button
-            onClick={save}
-            loading={busy}
-            disabled={!dirty || (currency !== "XAF" && !(parsedRate > 0))}
-          >
+          <Button onClick={save} loading={busy} disabled={!dirty || !canSave}>
             {tr("Save")}
           </Button>
           <Button

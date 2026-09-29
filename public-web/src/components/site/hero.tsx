@@ -13,16 +13,21 @@ import { CountUp } from "@/components/ui/count-up";
 import { getLang } from "@/lib/i18n";
 import { pickBilingual, type StatCounter } from "@/lib/site-api";
 import { p } from "@/lib/base-path";
+import { HERO_SCRIMS, SCRIM_SPLIT, SCRIM_STACKED } from "./hero-scrim";
+/* The scrim's floor and stop lists live in `hero-scrim.ts` so the portal's
+   sign-in can wear the same measured numbers without importing this band.
+   Re-exported here because the test that holds the floors reads them from the
+   band they were derived for. */
+export { HERO_SCRIMS, SCRIM_FLOOR } from "./hero-scrim";
 /*
  * THIS BAND'S OWN STYLESHEET, AND WHY IT IS AN IMPORT RATHER THAN MORE OF
  * `index.css`.
  *
- * Everything in it is mounted here and nowhere else, and this component is
- * reachable only from `marketing-page.tsx`, which `router.tsx` loads with
- * `React.lazy`. In `index.css` those rules sat on the first-paint path of every
- * route in the app — the track page, the portal login, a policy page — none of
- * which can render a hero. Imported here, Rollup attaches them to the marketing
- * chunk instead, which is the only chunk that can use them.
+ * It is mounted here and by the portal's sign-in frame, and both are reachable
+ * only through `React.lazy` routes. In `index.css` those rules sat on the
+ * first-paint path of every route in the app — the track page, a policy page —
+ * none of which can render a hero. Imported from the two lazy bands, Rollup
+ * keeps them off the entry.
  *
  * O-13 held this back until PR #330: both gates read `src/index.css` and only
  * that file, so splitting would have bought first-paint headroom by making them
@@ -96,32 +101,9 @@ export type HeroCopy = {
 };
 
 /**
- * THE SCRIM FLOORS, AS NUMBERS A TEST CAN READ.
- *
- * These were a comment. Guide §7.1 requires any new treatment of this band to
- * "re-derive them or keep them", and a comment cannot enforce that — the next
- * person to make the photograph more visible will nudge a percentage in a
- * gradient string and no gate will notice, because nothing in the tree knows
- * these numbers mean anything.
- *
- * So they are constants, `hero.test.tsx` asserts every stop where copy sits is
- * at or above the binding floor, and changing one now means changing a test
- * that says what it protects.
- *
- * The derivation, unchanged. Measured against the worst case a tenant can
- * upload — a blown-out, near-white photograph — the minimum scrim opacity for
- * each piece of hero copy is:
- *
- *   headline  #edeeee  large   3.0:1 needed   α ≥ 0.48
- *   sub-line  #9ea1a4  normal  4.5:1 needed   α ≥ 0.82
- *   eyebrow   #ff5a00  small   4.5:1 needed   α ≥ 0.87   ← binds
- */
-export const SCRIM_FLOOR = 0.87;
-
-/**
  * THE BEAM'S BRIGHTNESS CEILING, AS A NUMBER A TEST CAN READ.
  *
- * Same argument as `SCRIM_FLOOR` above, for the same element. The pass lightens
+ * Same argument as `SCRIM_FLOOR` (hero-scrim.ts), for the same element. The pass lightens
  * the ground behind the copy, and the eyebrow — #ff5a00 at 11px, needing 4.5:1 —
  * is what breaks first, exactly as it is for the scrim. On carbon:
  *
@@ -136,45 +118,6 @@ export const SCRIM_FLOOR = 0.87;
  * and a passing light is neither.
  */
 export const BEAM_PEAK = 0.22;
-
-/**
- * The two scrims, as stop lists rather than as strings.
- *
- * `over` marks the stops that sit under copy. Those are held to `SCRIM_FLOOR`;
- * the rest are where the photograph is allowed to come through, which is the
- * whole reason this is two layers and not one flat wash. The layout changes
- * shape at `lg` — copy is a left column with the track card on the right, so
- * the scrim can fall away horizontally; below `lg` the two stack and copy spans
- * the full width, so it can only fall away downward, under the card.
- */
-const SCRIM_STACKED = {
-  shape: "linear-gradient(180deg",
-  stops: [
-    { at: "0%", alpha: 0.94, over: true },
-    { at: "58%", alpha: 0.9, over: true },
-    { at: "100%", alpha: 0.55, over: false },
-  ],
-} as const;
-
-const SCRIM_SPLIT = {
-  shape: "radial-gradient(118% 130% at 20% 50%",
-  stops: [
-    { at: "0%", alpha: 0.95, over: true },
-    { at: "44%", alpha: 0.92, over: true },
-    { at: "74%", alpha: 0.46, over: false },
-    { at: "100%", alpha: 0.2, over: false },
-  ],
-} as const;
-
-/** Both scrims are the same colour at different strengths, so the recipe is
- *  written once. `--hero` is the band's own ground token, never a literal. */
-const scrimCss = (scrim: { shape: string; stops: ReadonlyArray<{ at: string; alpha: number }> }) =>
-  `${scrim.shape}, ${scrim.stops
-    .map((s) => `color-mix(in srgb, var(--hero) ${Math.round(s.alpha * 100)}%, transparent) ${s.at}`)
-    .join(", ")})`;
-
-/** Exported for the test that holds the floors. */
-export const HERO_SCRIMS = { stacked: SCRIM_STACKED, split: SCRIM_SPLIT, css: scrimCss };
 
 export function Hero({
   copy = null,
@@ -368,7 +311,7 @@ export function Hero({
 
             The binding constraint is the EYEBROW, not the headline — which is
             the opposite of what it looks like. The measurement and the floor it
-            produces are `SCRIM_FLOOR` at the top of this file, where a test can
+            produces are `SCRIM_FLOOR` in hero-scrim.ts, where a test can
             reach them; the reveal comes from where copy ISN'T, which is why
             this is two layers and not one.
           */}

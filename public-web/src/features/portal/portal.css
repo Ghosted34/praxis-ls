@@ -1123,7 +1123,18 @@ a.pt-row:hover {
   }
 }
 
-/* ── the sign-in screen ─────────────────────────────────────────────────── */
+/* ── the sign-in screen ─────────────────────────────────────────────────
+ *
+ * The homepage hero, carried through the door (see `SignInFrame` in
+ * auth/sign-in.tsx for the layer order and why it is the hero's). What is here
+ * is only what the portal adds to the hero's own rules in `hero.css`: the band's
+ * layout at each width, the plate's glass and tokens, the glass chips, and
+ * night.
+ *
+ * Every decorative layer is `position: absolute` with no `z-index` and every
+ * piece of content is `position: relative`, so PAINT ORDER IS DOM ORDER — the
+ * same construction the hero's safety arguments rest on, and the reason none
+ * of them is re-derived here. */
 
 .pt-signin {
   position: relative;
@@ -1132,34 +1143,76 @@ a.pt-row:hover {
   display: flex;
   flex-direction: column;
   isolation: isolate;
+  /* Clips the beam's raked overhang and the plate's tilt, never the content:
+     the band grows with what it holds, so a long step still scrolls the page. */
+  overflow: hidden;
   background: var(--hero);
   color: var(--hero-foreground);
 }
 .pt-signin-photo {
   position: absolute;
   inset: 0;
-  z-index: -2;
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
-/* Legibility over ANY photograph a tenant uploads: dark at the foot where the
-   card sits, lighter at the head where the logo sits. */
-.pt-signin-veil {
+.pt-signin-layer {
   position: absolute;
   inset: 0;
-  z-index: -1;
-  background:
-    linear-gradient(180deg, rgb(0 0 0 / 0.42) 0%, rgb(0 0 0 / 0.05) 34%, rgb(0 0 0 / 0.55) 72%, rgb(0 0 0 / 0.78) 100%);
+  pointer-events: none;
 }
-/* No photograph set: the tenant's own colour as light, over carbon. */
+
+/* NIGHT — what the light/dark switch does to the scene.
+ *
+ * The plate is dark glass in both themes, so the switch has to be answered by
+ * the room rather than by the form: in the dark theme a wash of the band's own
+ * ground deepens everything behind the copy and the plate, and the lanes, drawn
+ * above it, glow brighter against it.
+ *
+ * It ONLY darkens, which is the whole safety argument, the same one the hero's
+ * departure makes: every piece of type on this band is light on carbon, so a
+ * wash toward carbon moves contrast the safe way and the measured floors are a
+ * lower bound it can only raise. A response to a press, so the response budget. */
+.pt-signin-night {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--hero);
+  opacity: 0;
+  transition: opacity var(--dur-response) var(--ease-standard);
+}
+.dark .pt-signin-night {
+  opacity: 0.42;
+}
+
+/* The route lanes: the right half at `lg`, behind the plate, as on the hero.
+   Absent below it — a canvas animating under a blurred pane is a repaint per
+   frame a phone pays for twice. */
+.pt-signin-lanes {
+  position: absolute;
+  inset-block: 0;
+  right: 0;
+  width: 52%;
+  display: none;
+  pointer-events: none;
+}
+@media (min-width: 1024px) {
+  .pt-signin-lanes {
+    display: block;
+  }
+}
+
+/* No photograph set: the tenant's own colour as light, over carbon.
+   The top-left glow is where the headline stands now, so it is 30 % rather
+   than the 42 % it was when the copy sat at the foot: the accent half of the
+   headline is the tenant's ink as LARGE type (3:1), and at 30 % an orange
+   tenant's measures about 4.2:1 on it. */
 .pt-signin-scene {
   position: absolute;
   inset: 0;
-  z-index: -2;
   overflow: hidden;
   background:
-    radial-gradient(120% 80% at 12% 8%, color-mix(in srgb, var(--primary) 42%, transparent) 0%, transparent 55%),
+    radial-gradient(120% 80% at 12% 8%, color-mix(in srgb, var(--primary) 30%, transparent) 0%, transparent 55%),
     radial-gradient(90% 70% at 100% 100%, rgb(var(--brand-blue) / 0.38) 0%, transparent 60%),
     radial-gradient(60% 50% at 70% 30%, color-mix(in srgb, var(--primary) 18%, transparent) 0%, transparent 70%),
     var(--hero);
@@ -1170,38 +1223,405 @@ a.pt-row:hover {
   inset: 0;
   background-image: radial-gradient(circle, rgb(255 255 255 / 0.16) 1px, transparent 1.6px);
   background-size: 22px 22px;
-  -webkit-mask-image: radial-gradient(ellipse 70% 55% at 50% 32%, rgb(0 0 0) 0%, transparent 75%);
-  mask-image: radial-gradient(ellipse 70% 55% at 50% 32%, rgb(0 0 0) 0%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse 70% 55% at 50% 72%, rgb(0 0 0) 0%, transparent 75%);
+  mask-image: radial-gradient(ellipse 70% 55% at 50% 72%, rgb(0 0 0) 0%, transparent 75%);
 }
+/* Below `lg` the globe rises behind the plate at the foot of the screen, and
+   at `lg` it sits behind the plate on the right — either way it is the glass
+   that shows it, blurred, and never the copy. */
 .pt-signin-globe {
   position: absolute;
   left: 50%;
-  top: 4%;
-  width: min(128vw, 620px);
+  bottom: -14%;
+  width: min(140vw, 680px);
   height: auto;
   transform: translateX(-50%);
   color: var(--hero-foreground);
 }
-@media (min-width: 768px) {
+@media (min-width: 1024px) {
   .pt-signin-dots {
-    -webkit-mask-image: radial-gradient(ellipse 55% 70% at 30% 55%, rgb(0 0 0) 0%, transparent 75%);
-    mask-image: radial-gradient(ellipse 55% 70% at 30% 55%, rgb(0 0 0) 0%, transparent 75%);
+    -webkit-mask-image: radial-gradient(ellipse 45% 70% at 74% 55%, rgb(0 0 0) 0%, transparent 75%);
+    mask-image: radial-gradient(ellipse 45% 70% at 74% 55%, rgb(0 0 0) 0%, transparent 75%);
   }
   .pt-signin-globe {
-    left: 30%;
+    left: 74%;
     top: 50%;
-    width: min(62vw, 900px);
+    bottom: auto;
+    width: min(56vw, 860px);
     transform: translate(-50%, -50%);
   }
 }
-.pt-glass {
-  background: color-mix(in srgb, var(--card) 97%, transparent);
-  -webkit-backdrop-filter: saturate(180%) blur(22px);
-  backdrop-filter: saturate(180%) blur(22px);
-  color: var(--foreground);
-  border: 1px solid color-mix(in srgb, var(--card) 60%, transparent);
-  box-shadow: 0 24px 60px rgb(0 0 0 / 0.28);
+
+/* ── the band's layout ──────────────────────────────────────────────────── */
+
+/* `z-index` because the copy's veil is laid in the grid AFTER this bar and
+   reaches up behind it: without one, DOM order would paint the veil over the
+   logo and the chips instead of under them. */
+.pt-signin-bar {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  max-width: 88rem;
+  margin-inline: auto;
+  padding: calc(env(safe-area-inset-top, 0px) + 14px) 16px 0;
 }
+
+/* Below `lg`, one column that fills the screen: the copy at the head and the
+   plate at the foot, with the photograph between them — the full-bleed
+   phone layout. `space-between` is what puts the plate on the bottom edge of a
+   tall phone instead of floating in the middle of it. */
+.pt-signin-grid {
+  position: relative;
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: space-between;
+  gap: 28px;
+  width: 100%;
+  max-width: 88rem;
+  margin-inline: auto;
+  padding: 26px 16px calc(env(safe-area-inset-bottom, 0px) + 16px);
+}
+.pt-signin-copy,
+.pt-signin-slot {
+  width: 100%;
+  max-width: 30rem;
+  justify-self: center;
+}
+/* Positioned, so it paints above the veil laid in its cell. */
+.pt-signin-copy {
+  position: relative;
+}
+/* The copy's own scrim, below `lg` (see `SCRIM_DOOR_VEIL`). Laid in the copy's
+   grid cell, so its box IS the copy's box: it reaches up to the top of the band
+   and out to both edges (the band clips it), holds the floor to the copy's
+   last line, and fades over the 90px beneath.
+
+   A full viewport upward, not a fixed step: on a tablet the copy is centred,
+   hundreds of pixels below the header, and a veil that started short of the
+   top left the logo on bare sky with a hard edge beneath it. */
+.pt-signin-veil {
+  position: absolute;
+  /* Both lines, not just the start: for an absolutely positioned grid child
+     an `auto` end line is the grid's own edge, so `grid-row: 1` alone
+     stretched this veil to the foot of the band — measured, not guessed. */
+  grid-row: 1 / 2;
+  grid-column: 1 / -1;
+  top: -100vh;
+  bottom: -90px;
+  left: -48px;
+  right: -48px;
+  pointer-events: none;
+}
+/* The plate's wrapper. `hero.css` makes it deaf to the pointer (it carries the
+   entrance, and Chromium's preserve-3d hit test stops at it); the plate inside
+   turns hearing back on — see `.pt-signin-plate`. */
+.pt-signin-slot {
+  align-self: end;
+}
+@media (min-width: 640px) {
+  .pt-signin-bar {
+    padding-inline: 28px;
+  }
+  .pt-signin-grid {
+    padding-inline: 28px;
+  }
+}
+@media (min-width: 768px) {
+  .pt-signin-bar {
+    padding-top: 28px;
+  }
+  .pt-signin-grid {
+    align-content: center;
+    gap: 36px;
+    padding-top: 40px;
+    padding-bottom: 48px;
+  }
+  .pt-signin-slot {
+    align-self: center;
+  }
+}
+/* At `lg`, the hero's own split: copy left, where the radial scrim is at its
+   floor, and the plate right, where the photograph comes through. */
+@media (min-width: 1024px) {
+  .pt-signin-bar {
+    padding: 32px clamp(2.5rem, 5vw, 5rem) 0;
+  }
+  .pt-signin-grid {
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+    align-items: center;
+    gap: clamp(2.5rem, 5vw, 5rem);
+    padding: 40px clamp(2.5rem, 5vw, 5rem) 64px;
+  }
+  .pt-signin-copy {
+    max-width: 40rem;
+    justify-self: start;
+  }
+  .pt-signin-slot {
+    max-width: 28.5rem;
+    justify-self: end;
+  }
+}
+
+/* ── the copy ───────────────────────────────────────────────────────────── */
+
+/* The eyebrow on a glass ground of its own. On the hero the scrim alone holds
+   it (α ≥ 0.87, the floor it binds); here it also has to survive the drawn
+   scene, whose tenant-coloured glow sits exactly where the eyebrow does and
+   has no scrim. Its own pane makes it independent of whatever is behind it:
+   72 % carbon under 11px of `--primary-ink-hero`, which is walked to AA
+   against the lighter `--hero-plate-solid`. */
+.pt-signin-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 13px 7px 11px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--hero) 72%, transparent);
+  border: 1px solid var(--hero-line);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  color: var(--primary-ink-hero);
+}
+.pt-signin-eyebrow::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--primary);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--primary) 26%, transparent),
+    0 0 14px color-mix(in srgb, var(--primary) 70%, transparent);
+}
+
+/* The hero's type, a step smaller: this headline shares the screen with a
+   form, where the hero's shares it with a single field. */
+.pt-signin-title {
+  margin-top: 16px;
+  font-size: clamp(2.1rem, 4.4vw, 3.75rem);
+  color: var(--hero-foreground);
+}
+@media (min-width: 1024px) {
+  .pt-signin-title {
+    margin-top: 20px;
+  }
+}
+
+/* What the portal is for — at `lg` only, where there is a column for it. Light
+   ink, not the muted one: without a photograph the drawn scene's glow is
+   behind this list, and `--hero-muted` is not measured on it. */
+.pt-signin-points {
+  display: none;
+}
+@media (min-width: 1024px) {
+  .pt-signin-points {
+    display: grid;
+    gap: 14px;
+    margin-top: 36px;
+  }
+}
+.pt-signin-point {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--hero-foreground);
+}
+.pt-signin-point-icon {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--hero) 58%, transparent);
+  border: 1px solid var(--hero-line);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--hero-foreground) 12%, transparent);
+  color: var(--primary-ink-hero);
+}
+
+.pt-signin-way {
+  margin-top: 22px;
+}
+@media (min-width: 1024px) {
+  .pt-signin-way {
+    margin-top: 36px;
+  }
+}
+/* The one way in that needs no account, as a pane of the same glass. */
+.pt-signin-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 16px 0 13px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--hero) 56%, transparent);
+  border: 1px solid var(--hero-line);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  color: var(--hero-foreground);
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition:
+    background-color var(--dur-response) var(--ease-standard),
+    border-color var(--dur-response) var(--ease-standard);
+}
+.pt-signin-pill:hover {
+  background: color-mix(in srgb, var(--hero) 30%, transparent);
+  border-color: color-mix(in srgb, var(--hero-foreground) 34%, transparent);
+}
+.pt-signin-pill:focus-visible {
+  outline: 2px solid var(--hero-foreground);
+  outline-offset: 2px;
+}
+.pt-signin-pill-arrow {
+  transition: transform var(--dur-response) var(--ease-standard);
+}
+.pt-signin-pill:hover .pt-signin-pill-arrow {
+  transform: translateX(3px);
+}
+
+/* ── the plate ──────────────────────────────────────────────────────────────
+ *
+ * The hero's dark glass, holding the form. `data-theme="dark"` on the element
+ * brings the whole dark token block with it (see `SignInFrame`), so the
+ * fields, buttons, switch, code boxes and status colours inside paint from
+ * pairs that are already measured; what is declared here is the glass, and the
+ * `--pt-*` family, which `.pt-root` resolves once, above this element, in
+ * whichever theme the page is in.
+ *
+ * THE GROUND IS NEVER LIGHTER THAN THE HERO'S PLATE. The hero's pane is
+ * `--hero-plate` straight over the scrimmed photograph. This one is the same
+ * `--hero-plate` over a further 48 % of the band's own ground, so flattened on
+ * carbon it IS the hero's plate (`--hero-plate-solid`), and over any
+ * photograph it is strictly darker than the hero's own.
+ *
+ * THE NUMBER IS THE BALANCE BETWEEN GLASS AND A FORM. Less smoke and the pane
+ * stops holding an error line over a bright sky; more and it stops being glass
+ * (58 % was tried, and the photograph vanished behind it). At 48 %, over the
+ * worst ground a tenant can produce — a blown-out WHITE photograph behind the
+ * pane, at the band's lightest (`PLATE_GROUND_FLOOR`, hero-scrim.ts) — the
+ * pane flattens to about L = 0.085, where:
+ *
+ *   --foreground        #edeeee    6.7:1
+ *   --muted-foreground  84 % ink   4.65:1   (the dark theme's #bfc1c3: 4.3 ✗)
+ *   --primary-ink       35 % tint  4.55:1   (the hero ink as-is: 2.5 ✗)
+ *
+ * (Inks for the default orange; a tenant's hero ink is walked lighter, never
+ * darker, so theirs lands at or near the same place.) On an ordinary bright
+ * sky rather than pure white, every one of them clears with room.
+ *
+ * which is why those two are re-declared below rather than inherited from the
+ * dark block: both were measured on an opaque card, and this is glass. */
+.pt-signin-plate {
+  pointer-events: auto;
+  position: relative;
+  padding: 26px 22px 24px;
+  border-radius: 28px;
+  color: var(--foreground);
+  background:
+    var(--hero-plate),
+    color-mix(in srgb, var(--hero) 48%, transparent);
+  -webkit-backdrop-filter: saturate(1.6) blur(24px);
+  backdrop-filter: saturate(1.6) blur(24px);
+  border: 1px solid var(--hero-plate-edge-far);
+  box-shadow:
+    0 2px 6px -2px rgb(0 0 0 / 0.5),
+    0 18px 40px -12px rgb(0 0 0 / 0.55),
+    0 48px 90px -40px color-mix(in srgb, var(--primary) 26%, rgb(0 0 0 / 0.6)),
+    inset 0 1px 0 color-mix(in srgb, var(--hero-foreground) 20%, transparent);
+
+  --muted-foreground: color-mix(in srgb, var(--foreground) 84%, var(--hero));
+  /* The tenant's hero ink carried most of the way to the light ink: still
+     their colour in a link, and legible on glass (see the table above). */
+  --primary-ink: color-mix(in srgb, var(--primary-ink-hero) 35%, var(--foreground));
+  --pt-surface: color-mix(in srgb, var(--hero) 40%, transparent);
+  --pt-line: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --pt-line-strong: color-mix(in srgb, var(--foreground) 20%, transparent);
+  --pt-soft: color-mix(in srgb, var(--foreground) 7%, transparent);
+  --pt-tint: color-mix(in srgb, var(--primary) 14%, var(--card));
+  --pt-tint-strong: color-mix(in srgb, var(--primary) 24%, var(--card));
+}
+@media (min-width: 640px) {
+  .pt-signin-plate {
+    padding: 34px 32px 30px;
+    border-radius: 30px;
+  }
+}
+/* The glass edge, bright where the light is — the hero's construction, behind
+   the same `@supports`, because without `mask-composite` the ring is a filled
+   rectangle over the form. */
+@supports ((mask-composite: exclude) or (-webkit-mask-composite: xor)) {
+  .pt-signin-plate::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    pointer-events: none;
+    background: linear-gradient(
+      135deg,
+      var(--hero-plate-edge) 0%,
+      color-mix(in srgb, var(--hero-foreground) 14%, transparent) 38%,
+      var(--hero-plate-edge-far) 100%
+    );
+    -webkit-mask:
+      linear-gradient(black, black) content-box,
+      linear-gradient(black, black);
+    mask:
+      linear-gradient(black, black) content-box,
+      linear-gradient(black, black);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+  }
+}
+/* No blur, no glass: the pane the contrast was derived for, solid. */
+@supports not (backdrop-filter: blur(1px)) {
+  .pt-signin-plate {
+    background: var(--hero-plate-solid);
+  }
+}
+/* While somebody is typing, the edge holds lit instead of flashing past —
+   the hero's focus-hold, for this plate. Subject-first so `check:motion`
+   reads it as the beam edge it is. */
+.hero-beam-edge:is(.pt-signin-plate:focus-within *) {
+  animation-name: hero-beam-hold;
+  animation-duration: 2.6s;
+  animation-play-state: running;
+}
+/* A disabled primary waits in the tenant's colour, at a third of its strength,
+   rather than fading: `opacity` on a fill over dark glass makes brown, which
+   reads as a broken button rather than as "fill in the field first". The
+   site's own `.btn-primary:disabled` makes the same choice on light ground. */
+.pt-signin-plate .pt-btn-primary:disabled {
+  opacity: 1;
+}
+/* …but only while it is WAITING. A button carrying the spinner is sending, and
+   a request in flight is the one time the control should still look live. */
+.pt-signin-plate .pt-btn-primary:disabled:not(:has(.pt-spinner)) {
+  background: color-mix(in srgb, var(--primary) 30%, transparent);
+  color: color-mix(in srgb, var(--foreground) 62%, transparent);
+  box-shadow: none;
+}
+/* The switch's knob is `--card`, which is the dark card in here: a dark knob
+   on a glass track reads as a hole. The light ink is what reads as a knob. */
+.pt-signin-plate .pt-switch::after {
+  background: var(--foreground);
+}
+
+/* ── glass chips: language, theme, ⓘ ─────────────────────────────────────
+ *
+ * Dark glass rather than white: a white 14 % chip over a bright sky is white
+ * type on near-white, and these sit at the top of the band, where a tenant's
+ * photograph is most likely to be sky. */
 .pt-glass-chip {
   display: inline-flex;
   align-items: center;
@@ -1209,22 +1629,49 @@ a.pt-row:hover {
   height: 36px;
   padding: 0 12px;
   border-radius: 999px;
-  background: rgb(255 255 255 / 0.14);
+  background: color-mix(in srgb, var(--hero) 50%, transparent);
   color: var(--hero-foreground);
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
-  border: 1px solid rgb(255 255 255 / 0.18);
+  border: 1px solid var(--hero-line);
   font-size: 0.8125rem;
   font-weight: 600;
-  transition: background-color var(--pt-dur) var(--pt-ease);
+  transition:
+    background-color var(--pt-dur) var(--pt-ease),
+    color var(--pt-dur) var(--pt-ease);
 }
-.pt-glass-chip:hover,
-.pt-glass-chip[aria-pressed="true"] {
-  background: rgb(255 255 255 / 0.26);
+.pt-glass-chip:hover {
+  background: color-mix(in srgb, var(--hero) 26%, transparent);
 }
 .pt-glass-chip:focus-visible {
   outline: 2px solid var(--hero-foreground);
   outline-offset: 2px;
+}
+/* EN | FR as one segmented pane; the chosen language is the lit segment. */
+.pt-signin-seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--hero) 50%, transparent);
+  border: 1px solid var(--hero-line);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+.pt-signin-seg .pt-glass-chip {
+  height: 28px;
+  padding: 0 10px;
+  background: transparent;
+  border-color: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.pt-signin-seg .pt-glass-chip:hover {
+  background: color-mix(in srgb, var(--hero-foreground) 12%, transparent);
+}
+.pt-signin-seg .pt-glass-chip[aria-pressed="true"] {
+  background: var(--hero-foreground);
+  color: var(--hero);
 }
 
 /* The avatar: initials in the tenant's tint. */

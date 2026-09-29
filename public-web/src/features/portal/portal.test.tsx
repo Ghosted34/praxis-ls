@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
@@ -8,6 +10,7 @@ import { PortalApp } from "./portal-app";
 import { parseAmount } from "./lib/numbers";
 import { errorText } from "./ui/kit";
 import { en } from "./portal-copy";
+import { PLATE_GROUND_FLOOR, SCRIM_DOOR_VEIL, SCRIM_DOOR_WASH, SCRIM_FLOOR } from "@/components/site/hero-scrim";
 
 /**
  * The client portal, rendered for real against a stubbed API.
@@ -187,6 +190,84 @@ describe("signing in", () => {
     const { findByText } = await mount("/portal/login");
     await findByText(en.signin.welcomeBackNamed.replace("{{name}}", "Marie"));
     await findByText("Acme Trading");
+  });
+});
+
+describe("the door is the homepage's hero", () => {
+  it("puts the form on dark glass that carries the dark theme with it", async () => {
+    // The plate is dark glass in BOTH portal themes. `data-theme="dark"` is
+    // what makes every field, switch and error inside paint from dark-theme
+    // pairs; without it, a light-theme portal draws dark ink on dark glass.
+    stubApi(false);
+    const { container } = await mount("/portal/login");
+    const plate = await waitFor(() => {
+      const el = container.querySelector<HTMLElement>("main.pt-signin-plate");
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    expect(plate.dataset.theme).toBe("dark");
+    expect(plate.querySelector('input[type="email"]')).toBeTruthy();
+    // The hero's own pass runs across this band too.
+    expect(container.querySelector(".pt-signin .hero-beam-track .hero-beam")).toBeTruthy();
+  });
+
+  it("mounts the pass under the scrims and night under the copy", () => {
+    // Paint order is the safety argument, as on the hero: the scrims render
+    // after the beam, so on a photograph the measured wash caps it; night
+    // renders after the scrims and before the plate, so it only ever darkens
+    // what the copy stands on. A tidy-up that reorders these re-derives
+    // contrast nobody measured.
+    const source = readFileSync(join(__dirname, "auth/sign-in.tsx"), "utf8");
+    const beam = source.indexOf('className="hero-beam-track"');
+    const wash = source.indexOf("HERO_SCRIMS.css(SCRIM_DOOR_WASH)");
+    const split = source.indexOf("HERO_SCRIMS.css(HERO_SCRIMS.split)");
+    const night = source.indexOf('className="pt-signin-night"');
+    const veil = source.indexOf("HERO_SCRIMS.css(SCRIM_DOOR_VEIL)");
+    const copy = source.indexOf('className="pt-signin-copy"');
+    const plate = source.indexOf('className="pt-signin-plate tilt-plate"');
+    expect(beam).toBeGreaterThan(0);
+    expect(beam).toBeLessThan(wash);
+    expect(beam).toBeLessThan(split);
+    expect(Math.max(wash, split)).toBeLessThan(night);
+    expect(night).toBeLessThan(veil);
+    expect(veil).toBeLessThan(copy);
+    expect(copy).toBeLessThan(plate);
+  });
+
+  it("holds the hero's floor under the copy and the plate's floor everywhere else", () => {
+    // Below `lg` the door's scrim is two layers: a veil that rides with the
+    // copy and a wash over the band. The veil is held to the hero's own floor
+    // wherever copy sits; the wash is under nothing but the plate, and is held
+    // to the lightest ground the hero ever floats its plate over.
+    for (const stop of SCRIM_DOOR_VEIL.stops) {
+      if (stop.over) expect(stop.alpha).toBeGreaterThanOrEqual(SCRIM_FLOOR);
+    }
+    for (const stop of SCRIM_DOOR_WASH.stops) {
+      expect(stop.over).toBe(false);
+      expect(stop.alpha).toBeGreaterThanOrEqual(PLATE_GROUND_FLOOR);
+      // …and it is still a wash, not the black rectangle it replaced.
+      expect(stop.alpha).toBeLessThan(0.7);
+    }
+  });
+
+  it("tells someone with only a tracking number that they need no account", async () => {
+    stubApi(false);
+    const { findByText } = await mount("/portal/login");
+    const link = (await findByText(en.signin.trackLink)).closest("a");
+    expect(link?.getAttribute("href")).toBe("/public/track");
+  });
+
+  it("switches the portal between light and dark from the door", async () => {
+    stubApi(false);
+    const { findByRole } = await mount("/portal/login");
+    const toDark = await findByRole("button", { name: en.signin.themeDark });
+    fireEvent.click(toDark);
+    expect(document.documentElement.classList.contains("dark")).toBe(true);
+    expect(localStorage.getItem("praxis.portal.theme")).toBe("dark");
+    // The label names what the next press will do.
+    fireEvent.click(await findByRole("button", { name: en.signin.themeLight }));
+    expect(document.documentElement.classList.contains("dark")).toBe(false);
+    expect(localStorage.getItem("praxis.portal.theme")).toBe("light");
   });
 });
 

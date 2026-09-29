@@ -4,9 +4,14 @@
  * ── THE BRIEF ──────────────────────────────────────────────────────────────
  *
  * Beautiful, and almost no words (owner, portal redesign): the tenant's own
- * photograph behind a frosted card, one field, one big button. Everything the
- * old screen said in paragraphs — what the portal is for, who issues access —
- * is behind the ⓘ for whoever wants it.
+ * photograph, one field, one big button. Everything the old screen said in
+ * paragraphs — what the portal is for, who issues access — is behind the ⓘ for
+ * whoever wants it.
+ *
+ * And it is the homepage's hero, carried through the door (owner, login
+ * redesign): the same scrimmed photograph, the same light passing behind a
+ * two-tone headline, the same dark glass plate — here holding the form rather
+ * than the track field. `SignInFrame` below says how, layer by layer.
  *
  * ── HOW A PERSON GETS IN ───────────────────────────────────────────────────
  *
@@ -20,9 +25,19 @@
  */
 import * as React from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { cn } from "@/lib/cn";
 import { getLang, setLang } from "@/lib/i18n";
+import { p } from "@/lib/base-path";
+import { usePointerLight, useTilt } from "@/lib/motion";
+import { useInView, useRevealed } from "@/components/ui/reveal";
+import { StagedLines } from "@/components/ui/type";
+import { RouteCanvas } from "@/components/site/route-canvas";
+import { HERO_SCRIMS, SCRIM_DOOR_VEIL, SCRIM_DOOR_WASH } from "@/components/site/hero-scrim";
+/* The hero's own rules — the pass, the glare, the edge that catches the beam,
+   the tilt and the entrance — rather than a portal copy of them. A second copy
+   of a light that is supposed to be one scene is two lights that drift. */
+import "@/components/site/hero.css";
 import {
   portalRequestCode,
   portalVerifyCode,
@@ -36,6 +51,7 @@ import {
 import { portalSession, type KnownPerson } from "@/lib/portal-session";
 import { deviceCanUsePasskey, signWithPasskey, isCancel, biometricKind } from "../lib/passkey";
 import { firstNameOf } from "../lib/portal-context";
+import { resolvePortalTheme, setPortalTheme } from "../lib/theme";
 import { BrandMark, SignInScene, useSignInPhoto } from "../ui/brand";
 import { Avatar, InfoButton, PasswordField, Switch, errorText, Busy } from "../ui/kit";
 import { CodeInput } from "../ui/code-input";
@@ -52,6 +68,8 @@ import {
   WalletIcon,
   UsersIcon,
   ChatIcon,
+  SunIcon,
+  MoonIcon,
 } from "../ui/icons";
 
 type Step = "email" | "code" | "password" | "forgotSent";
@@ -66,25 +84,128 @@ function useNext(): string {
   return next.startsWith("/portal") && !next.startsWith("/portal/login") ? next : "/portal";
 }
 
-/** The frame every sign-in step sits in: photo, veil, logo, card. */
+/**
+ * The frame every sign-in step sits in — the homepage hero, carried through
+ * the door.
+ *
+ * ── WHY IT IS THE HERO AND NOT A PAGE OF ITS OWN ──────────────────────────
+ *
+ * A client reaches this screen from the homepage's "Client portal" link, and
+ * until this frame they walked out of a dark, lit, moving scene into a
+ * photograph with a white sheet over two thirds of it: the same company, two
+ * different buildings. So this is the hero's scene, layer for layer and in the
+ * hero's own paint order — `hero.tsx` carries each layer's safety argument, and
+ * every one of them holds here because nothing is reordered:
+ *
+ *   photograph → pointer light → the pass → the scrims → night
+ *     → route lanes → the copy's veil → the copy and the plate
+ *
+ * The classes are the hero's own (`hero.css`), not copies, and the scrims come
+ * from the hero's measured stop lists (`hero-scrim.ts`). At `lg` it is the
+ * hero's split scrim, copy in the left column where it holds the floor. Below
+ * `lg` the floor rides WITH the copy as a veil in its grid cell, over a lighter
+ * wash, so the photograph shows between the headline and the plate instead of
+ * vanishing under a scrim sized for the hero's longer copy. The eyebrow and the
+ * track link each carry a glass ground of their own, so neither leans on the
+ * photograph for its contrast.
+ *
+ * ── THE PLATE IS A PIECE OF THE DARK THEME ────────────────────────────────
+ *
+ * The form is dark glass in BOTH portal themes (owner's choice). Rather than a
+ * second, on-dark set of rules for every field, button, switch and code box in
+ * `kit.tsx`, the plate carries `data-theme="dark"`: the dark token block in
+ * `index.css` matches it, so every control inside paints from dark-theme pairs
+ * `check:contrast` already measures, and a control added to a sign-in step
+ * later is right on the glass without anyone remembering to make it so.
+ * `.pt-signin-plate` in portal.css adds the glass and the `--pt-*` family.
+ *
+ * ── THE SWITCH ────────────────────────────────────────────────────────────
+ *
+ * Light/dark here is the PORTAL's theme (`lib/theme.ts`), the same choice
+ * Account offers, so a client can make it before the first screen they land
+ * on. The scene answers at once — night deepens the wash over the photograph
+ * (`.pt-signin-night`) — and the portal behind the door opens in that mode.
+ */
 export function SignInFrame({ children, info = true }: { children: React.ReactNode; info?: boolean }) {
   const photo = useSignInPhoto();
   const { t } = useTranslation();
   const lang = getLang();
+  /* One contract, two inputs, as on the hero: the pointer on a laptop and the
+     gyroscope on a phone both write `--lx`/`--ly` on the band, and the light,
+     the glare and the plate's tilt all read that one pair. Neither hook ever
+     prompts for a sensor permission. */
+  const lightRef = usePointerLight<HTMLDivElement>();
+  const tilt = useTilt<HTMLDivElement>({ max: 18 });
+  /* `live` unpauses the pass and the word light only while the band is on
+     screen; `entered` runs the arrival once. Both ride the shared observers. */
+  const [liveRef, live] = useInView<HTMLDivElement>();
+  const [enterRef, entered] = useRevealed<HTMLDivElement>();
+  const bandRef = React.useCallback(
+    (el: HTMLDivElement | null) => {
+      (lightRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+      (tilt.ref as React.MutableRefObject<HTMLDivElement | null>).current = el;
+    },
+    [lightRef, tilt.ref],
+  );
+  const wide = useWide();
+  const taglineMain = t("portal.signin.taglineMain");
+  const enter = (step: string) => cn("hero-enter", step, entered && "is-in");
+
   return (
-    <div className="pt-signin">
-      {photo ? <img className="pt-signin-photo" src={photo} alt="" /> : <SignInScene />}
-      <div className="pt-signin-veil" aria-hidden="true" />
-      <header className="flex items-center justify-between gap-3 px-5 pt-[calc(env(safe-area-inset-top)+18px)] md:px-10 md:pt-8">
+    <div ref={bandRef} data-live={live ? "true" : "false"} className="pt-signin band-hero">
+      {photo ? (
+        <>
+          <img className="pt-signin-photo" src={photo} alt="" />
+          {/* Under the scrims, as on the hero: lightening cannot take a
+              photograph past the white the floors were measured against. */}
+          <div aria-hidden="true" className="hero-light" />
+        </>
+      ) : (
+        <SignInScene />
+      )}
+
+      {/* The pass. Between the light and the scrims, so on a photograph the
+          measured wash caps the beam exactly as it caps the image. */}
+      <div ref={liveRef} aria-hidden="true" className="hero-beam-track">
+        <span className="hero-beam" />
+      </div>
+
+      {/* The scrims. At `lg`, the hero's split, unchanged. Below it, a wash
+          over the band held to the plate's floor — the copy's own floor rides
+          in the grid with the copy (`pt-signin-veil`), so it is under the
+          headline however the headline wraps. `hero-scrim.ts` has why. */}
+      {photo ? (
+        <>
+          <div aria-hidden="true" className="pt-signin-layer lg:hidden" style={{ background: HERO_SCRIMS.css(SCRIM_DOOR_WASH) }} />
+          <div aria-hidden="true" className="pt-signin-layer hidden lg:block" style={{ background: HERO_SCRIMS.css(HERO_SCRIMS.split) }} />
+        </>
+      ) : null}
+
+      {/* Night: a wash of the band's own ground, only in the dark theme. It can
+          only darken, so like the hero's departure it can raise the measured
+          floors and never spend them. */}
+      <div aria-hidden="true" className="pt-signin-night" />
+
+      {/* The lanes, behind the plate on a wide screen, where the glass blurs
+          them into moving light. Not MOUNTED below `lg` rather than merely
+          hidden: a phone never sees them, so it should not run their effect. */}
+      {wide ? (
+        <div aria-hidden="true" className="pt-signin-lanes">
+          <RouteCanvas className="h-full w-full" alpha={0.42} />
+        </div>
+      ) : null}
+
+      <header className="pt-signin-bar">
         <BrandMark onDark className="max-h-9" />
         <div className="flex items-center gap-2">
-          <div className="flex gap-1" role="group" aria-label={t("portal.account.language")}>
+          <div className="pt-signin-seg" role="group" aria-label={t("portal.account.language")}>
             {(["en", "fr"] as const).map((l) => (
               <button key={l} type="button" className="pt-glass-chip" aria-pressed={lang === l} onClick={() => setLang(l)}>
                 {l.toUpperCase()}
               </button>
             ))}
           </div>
+          <ThemeSwitch />
           {info ? (
             <InfoButton onDark label={t("portal.signin.whatsInside")} title={t("portal.signin.whatsInside")}>
               <FeatureList />
@@ -93,15 +214,113 @@ export function SignInFrame({ children, info = true }: { children: React.ReactNo
         </div>
       </header>
 
-      <div className="flex flex-1 flex-col justify-end md:flex-row md:items-center md:justify-between md:gap-10 md:px-10 lg:px-20">
-        <p className="pt-display max-w-xl px-6 pb-6 text-[2.05rem] text-[var(--hero-foreground)] [text-shadow:0_2px_24px_rgb(0_0_0/0.35)] md:p-0 md:text-[2.75rem] lg:text-[3.4rem]">
-          {t("portal.signin.tagline")}
-        </p>
-        <main className="pt-glass w-full rounded-t-[30px] px-6 pb-[calc(env(safe-area-inset-bottom)+26px)] pt-7 md:w-[440px] md:shrink-0 md:rounded-[30px] md:p-9">
-          {children}
-        </main>
+      <div ref={enterRef} className="pt-signin-grid tilt-stage">
+        {photo ? <div aria-hidden="true" className="pt-signin-veil lg:hidden" style={{ background: HERO_SCRIMS.css(SCRIM_DOOR_VEIL) }} /> : null}
+        <div className="pt-signin-copy">
+          <p className={enter("pt-signin-eyebrow eyebrow hero-enter-eyebrow")}>{t("portal.signin.eyebrow")}</p>
+          {/* A paragraph, not a heading: the screen's `h1` is the step inside
+              the plate ("Sign in", "Check your email"), which is what a screen
+              reader should land on. `StagedLines` gives the line its one
+              readable name either way. The second half arrives on its own beat
+              in the tenant's colour, and `wordOffset` keeps it the next light
+              in the pass rather than a second first. */}
+          <p className="pt-signin-title hero-title hero-lit">
+            <StagedLines paintImmediately masked startDelay={80} wordClassName="hero-word-light" text={taglineMain} />{" "}
+            <span className="text-[var(--primary-ink-hero)]">
+              <StagedLines
+                masked
+                startDelay={340}
+                wordOffset={taglineMain.trim().split(/\s+/).length}
+                wordClassName="hero-word-light hero-word-light-accent"
+                text={t("portal.signin.taglineAccent")}
+              />
+            </span>
+          </p>
+          <ul className={enter("pt-signin-points hero-enter-lead")} aria-label={t("portal.signin.whatsInside")}>
+            {POINTS.map(([Icon, key]) => (
+              <li key={key} className="pt-signin-point">
+                <span className="pt-signin-point-icon">
+                  <Icon size={20} />
+                </span>
+                {t(key)}
+              </li>
+            ))}
+          </ul>
+          <div className={enter("pt-signin-way hero-enter-cta")}>
+            {/* Someone holding only a tracking number has no account and
+                needs none: say so before they go looking for a password. */}
+            <Link to={p("/track")} className="pt-signin-pill">
+              <ShipIcon size={18} />
+              {t("portal.signin.trackLink")}
+              <ArrowRightIcon size={16} className="pt-signin-pill-arrow" />
+            </Link>
+          </div>
+        </div>
+
+        {/* The plate. Its wrapper owns the entrance transform and `.tilt-plate`
+            owns the pointer's, on separate elements for the reason `hero.css`
+            gives; the wrapper is deaf to the pointer and the plate hears again
+            (`.pt-signin-plate`), which keeps Chromium's preserve-3d hit test
+            from stopping one element short of the fields. */}
+        <div className={cn("pt-signin-slot hero-plate-enter hero-enter-plate", entered && "is-in")}>
+          <main data-theme="dark" className="pt-signin-plate tilt-plate">
+            <span aria-hidden="true" className="hero-plate-glare" />
+            <span aria-hidden="true" className="hero-beam-edge" />
+            <div className="relative">{children}</div>
+          </main>
+        </div>
       </div>
     </div>
+  );
+}
+
+/** The hero's split width (`lg`), live — the lanes exist only at and above it. */
+function useWide() {
+  const query = "(min-width: 1024px)";
+  const [wide, setWide] = React.useState(() => typeof window !== "undefined" && !!window.matchMedia && window.matchMedia(query).matches);
+  React.useEffect(() => {
+    if (!window.matchMedia) return;
+    const m = window.matchMedia(query);
+    const on = () => setWide(m.matches);
+    m.addEventListener?.("change", on);
+    return () => m.removeEventListener?.("change", on);
+  }, []);
+  return wide;
+}
+
+/** What the portal is for, shown beside the form where there is room for it.
+ *  Four of the ⓘ's six rows; the ⓘ keeps the full list and the access note. */
+const POINTS: [(props: { size?: number }) => React.ReactElement, string][] = [
+  [ShipIcon, "portal.signin.feature.track"],
+  [DocIcon, "portal.signin.feature.documents"],
+  [WalletIcon, "portal.signin.feature.pay"],
+  [ChatIcon, "portal.signin.feature.chat"],
+];
+
+/**
+ * Light or dark, for the portal behind the door. The label names what a press
+ * will DO ("Switch to dark mode"), so the icon is the state and the name is
+ * the action — the pattern `components/site/theme-toggle.tsx` uses.
+ */
+function ThemeSwitch() {
+  const { t } = useTranslation();
+  const [mode, setMode] = React.useState<"light" | "dark">(() => resolvePortalTheme());
+  const next = mode === "dark" ? "light" : "dark";
+  const Icon = mode === "dark" ? SunIcon : MoonIcon;
+  const label = mode === "dark" ? t("portal.signin.themeLight") : t("portal.signin.themeDark");
+  return (
+    <button
+      type="button"
+      className="pt-glass-chip !h-9 !w-9 !justify-center !p-0"
+      aria-label={label}
+      title={label}
+      onClick={() => {
+        setPortalTheme(next);
+        setMode(next);
+      }}
+    >
+      <Icon size={18} />
+    </button>
   );
 }
 
@@ -313,7 +532,7 @@ export function SignInPage() {
 
           <div className="mt-6 grid gap-3">
             {offerPasskey ? (
-              <button type="button" className="pt-btn pt-btn-primary pt-btn-block" onClick={() => void passkey()} disabled={!!busy}>
+              <button type="button" className="pt-btn pt-btn-primary pt-btn-block hero-shimmer" onClick={() => void passkey()} disabled={!!busy}>
                 <Busy busy={busy === "passkey"}>
                   <BioIcon size={22} />
                 </Busy>
@@ -322,7 +541,7 @@ export function SignInPage() {
             ) : null}
             <button
               type="submit"
-              className={cn("pt-btn pt-btn-block", offerPasskey ? "pt-btn-soft" : "pt-btn-primary")}
+              className={cn("pt-btn pt-btn-block", offerPasskey ? "pt-btn-soft" : "pt-btn-primary hero-shimmer")}
               disabled={!validEmail || !!busy}
             >
               <Busy busy={busy === "code"}>{offerPasskey ? <MailIcon size={20} /> : null}</Busy>
@@ -396,7 +615,7 @@ export function SignInPage() {
             <PasswordField label={t("portal.signin.password")} value={password} onChange={setPassword} autoFocus invalid={!!error} />
           </div>
           {errorLine}
-          <button type="submit" className="pt-btn pt-btn-primary pt-btn-block mt-6" disabled={!password || !!busy}>
+          <button type="submit" className="pt-btn pt-btn-primary pt-btn-block hero-shimmer mt-6" disabled={!password || !!busy}>
             <Busy busy={busy === "password"}>{null}</Busy>
             {t("portal.signin.signIn")}
           </button>

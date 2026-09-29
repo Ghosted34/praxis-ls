@@ -403,7 +403,10 @@ export function CostingPage() {
         />
       </KpiRow>
 
-      <div className="flex flex-wrap items-end gap-3">
+      {/* `mb-4`: DataList (card stack on a phone, Table on desktop) adds no top
+          margin of its own, so without it the first row sits flush against the
+          last line of chips once they wrap. */}
+      <div className="mb-4 flex flex-wrap items-end gap-3">
         <Field label={tr("Search")} hint={tr("Reference, file or client")}>
           <Input
             value={q}

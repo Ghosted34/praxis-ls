@@ -65,13 +65,28 @@ describe("mirrorUsersIntoSandbox", () => {
     expect(insert.sql).toContain("FROM live.app_user");
   });
 
-  it("never copies employee_id or a secret", async () => {
+  it("never copies a secret", async () => {
     const c = fakeClient();
     await mirrorUsersIntoSandbox(c);
     const insert = c.queries.find((q) => q.sql.startsWith("INSERT"));
-    expect(insert.sql).not.toContain("employee_id");
     expect(insert.sql).not.toContain("totp_secret_enc");
     expect(insert.sql).not.toContain("godmode_pin_hash");
+  });
+
+  it("links the account to its employee only through the SANDBOX copy of that employee", async () => {
+    // 14250 copies live employees into the sandbox, so the link can resolve.
+    // Taking live.app_user.employee_id raw would 23503 for anyone the sandbox
+    // does not hold — the reason the column used to be left out entirely.
+    const c = fakeClient();
+    await mirrorUsersIntoSandbox(c);
+    const insert = c.queries.find((q) => q.sql.startsWith("INSERT"));
+    const update = c.queries.find((q) => q.sql.startsWith("UPDATE"));
+    for (const q of [insert, update]) {
+      expect(q.sql).toContain(
+        "(SELECT e.employee_id FROM sandbox.employee e WHERE e.employee_id = l.employee_id)",
+      );
+      expect(q.sql).not.toMatch(/employee_id\s*=\s*l\.employee_id\s*(,|$)/m);
+    }
   });
 
   it("uses an untargeted ON CONFLICT so an email clash cannot raise", async () => {

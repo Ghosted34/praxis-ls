@@ -968,6 +968,9 @@ export type Employee = {
    * status implies a name change — "Née SPECIMEN Epse EXEMPLE" only exists in
    * that case. See employeeUsesMaidenName. */
   staff_no?: string | null; // the matricule; allocated, never typed
+  /** Test only (14250): when this real person was last copied in from Live.
+   *  Null in Live, and on anyone created in Test. */
+  copied_from_live_at?: string | null;
   civility?: string | null;
   gender?: string | null;
   maiden_name?: string | null;

@@ -298,6 +298,17 @@ async function staffNoPrefix(client, entityId) {
   return code || "EMP";
 }
 
+/** Marks a matricule allocated in TEST. Also what 14250 appends when a TEST
+ *  person has to give up a number a real person holds. */
+const TEST_STAFF_NO_SUFFIX = "-T";
+
+/** Is this connection working in the sandbox schema? Asked of the connection
+ *  rather than the request, because the connection is what the INSERT will use. */
+async function inSandbox(client) {
+  const { rows } = await client.query("SELECT current_schema() AS schema");
+  return Boolean(rows[0] && rows[0].schema === "sandbox");
+}
+
 /**
  * Allocate the next matricule for an entity.
  *
@@ -314,10 +325,18 @@ async function staffNoPrefix(client, entityId) {
  * hand before this ran would collide once, and the answer is to take the next
  * number rather than to fail the hire. Bounded, because an unbounded retry on a
  * unique violation is an outage waiting for a bad day.
+ *
+ * In TEST the number ends in "-T" (SLAS-001-T). Live people are copied into the
+ * sandbox with their real matricules (migration 14250), and the sandbox keeps
+ * its own counter, so without the suffix a TEST hire and the next real hire
+ * would both be SLAS-012 — and a real person's copy would be refused by the
+ * unique index. The suffix keeps the two series apart for good, and says on
+ * every screen and payslip that the person is not real.
  */
 async function allocateStaffNo(client, { entity_id = null } = {}) {
   const key = entity_id ? String(entity_id) : "*";
   const prefix = await staffNoPrefix(client, entity_id);
+  const suffix = (await inSandbox(client)) ? TEST_STAFF_NO_SUFFIX : "";
   for (let attempt = 0; attempt < 25; attempt += 1) {
     const { rows } = await client.query(
       `INSERT INTO employee_number_sequence (sequence_key, prefix, next_no)
@@ -330,7 +349,7 @@ async function allocateStaffNo(client, { entity_id = null } = {}) {
       [key, prefix],
     );
     const n = rows[0].next_no - 1;
-    const candidate = `${rows[0].prefix}-${String(n).padStart(3, "0")}`;
+    const candidate = `${rows[0].prefix}-${String(n).padStart(3, "0")}${suffix}`;
     const { rows: clash } = await client.query(
       "SELECT 1 FROM employee WHERE staff_no = $1 LIMIT 1",
       [candidate],

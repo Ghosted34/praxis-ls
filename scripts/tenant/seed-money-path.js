@@ -10,8 +10,9 @@
  *   journal) → asset depreciation.
  *
  * It runs entirely in the SANDBOX schema (X-Praxis-Env: sandbox) and refuses to run
- * against a live tenant. Every step is independent and logged, so a failure in one
- * (e.g. an approval workflow that needs a human) never blocks the rest.
+ * unless the API confirms it is answering in the sandbox. Every step is independent
+ * and logged, so a failure in one (e.g. an approval workflow that needs a human)
+ * never blocks the rest.
  *
  * Prereqs: the API server is running, and scripts/tenant/seed-sandbox.sql has been
  * applied (this reads the entities/clients/dossiers/dictionary/treasury it created).
@@ -20,7 +21,6 @@
  */
 "use strict";
 
-const { Pool } = require("pg");
 const { config } = require("../../src/config/env");
 
 const args = Object.fromEntries(
@@ -131,30 +131,26 @@ async function writeMarker() {
   }
 }
 
-/** Refuse to run against a live tenant — the sandbox header is ignored there. */
+/**
+ * Refuse to run unless the API itself says this request lands in the SANDBOX.
+ *
+ * This used to refuse any tenant with `is_live` set, because the server ignored
+ * X-Praxis-Env for a live tenant and every post would have gone to LIVE. The
+ * server honours TEST for live tenants now (2026-09-29), so the registry flag is
+ * no longer the question. The question is what the server will actually do with
+ * this header — and `/whoami` answers exactly that, through the same middleware
+ * every post below goes through.
+ */
 async function assertSandboxable() {
-  const pool = new Pool({
-    host: config.DB_HOST, port: config.DB_PORT, database: config.DB_NAME,
-    user: config.DB_USER, password: config.DB_PASSWORD,
-    ssl: config.DB_SSL ? { rejectUnauthorized: false } : false,
-  });
-  try {
-    const { rows } = await pool.query("SELECT is_live, status FROM platform.tenant WHERE slug=$1", [slug]);
-    if (!rows.length) throw new Error(`tenant '${slug}' not found in platform registry`);
-    if (rows[0].is_live) {
-      throw new Error(
-        `tenant '${slug}' is LIVE (is_live=true) — the X-Praxis-Env:sandbox header is ignored for live tenants, so this would post to LIVE. Aborting.`,
-      );
-    }
-  } finally {
-    await pool.end();
+  const who = await call("GET", "/whoami");
+  if (!who || who.env !== "sandbox") {
+    throw new Error(
+      `the API answered env='${who && who.env}' for X-Praxis-Env: sandbox — this would post to LIVE. Aborting.`,
+    );
   }
 }
 
 async function main() {
-  await assertSandboxable();
-  ok(`tenant '${slug}' is not live — safe to seed sandbox`);
-
   // 0. Health preflight — fail fast (and clearly) if we're pointed at the wrong port.
   console.warn(`  → API target: ${BASE}  (Host: ${HOST})`);
   try {
@@ -166,6 +162,9 @@ async function main() {
         `(8080 is likely your Apache/XAMPP). Check the server boot log for "praxis-ls api listening" and pass --port=<n> or --url=<origin>.`,
     );
   }
+
+  await assertSandboxable();
+  ok(`the API confirms '${slug}' requests land in the sandbox — safe to seed`);
 
   // 1. Login
   const auth = await call("POST", "/auth/login", { email, password });

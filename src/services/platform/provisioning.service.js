@@ -12,6 +12,7 @@ const { config } = require("../../config/env");
 const { logger } = require("../../config/logger");
 const m = require("./migrator");
 const { mirrorUsersIntoSandbox } = require("../../shared/db/sandbox-user-mirror");
+const { copyLivePeopleIntoSandbox } = require("../../shared/db/sandbox-live-copy");
 const passwordPolicy = require("../../shared/security/password-policy");
 const dbCredentials = require("../tenant/db-credential.service");
 
@@ -527,7 +528,8 @@ async function migrateTenant(slug) {
 }
 
 /**
- * Self-heal `sandbox.app_user` on every tenant migration pass.
+ * Self-heal `sandbox.app_user`, and the copies of live people, on every tenant
+ * migration pass.
  *
  * `scripts/deploy.sh` runs the migrate service (platform + all tenants) on every
  * deploy, which makes this the one place guaranteed to touch every tenant on every
@@ -535,6 +537,11 @@ async function migrateTenant(slug) {
  * 2026-08-02 (a wipe-time-only mirror left every user created afterwards missing,
  * and their first TEST-mode write failed with 23503). The mirror is idempotent and
  * inserts nothing on a healthy tenant, so the cost is one INSERT…SELECT per deploy.
+ *
+ * The people pass (14250) runs after it: it is how live employees who existed
+ * before that migration first reach TEST, and it picks up any copy the live
+ * trigger had to skip. Gap-fill only, so a TEST edit to a real person survives a
+ * deploy.
  *
  * Best-effort by design: a deploy must not fail over sandbox convenience data. A
  * failure is logged at error level and `scripts/tenant/mirror-users.js` re-runs it
@@ -546,10 +553,14 @@ async function mirrorUsersOnMigrate(slug) {
   try {
     const { mirrored } = await mirrorUsersIntoSandbox(cli);
     if (mirrored) logger.info({ slug, mirrored }, "mirrored users into sandbox");
+    const people = await copyLivePeopleIntoSandbox(cli);
+    if (people.entities || people.employees || people.accounts) {
+      logger.info({ slug, ...people }, "copied live people into sandbox");
+    }
   } catch (err) {
     logger.error(
       { slug, err },
-      "sandbox user mirror failed — TEST-mode writes may fail for unmirrored users; run scripts/tenant/mirror-users.js",
+      "sandbox user/people mirror failed — TEST-mode writes may fail for unmirrored users, and some real people may be missing from TEST; run scripts/tenant/mirror-users.js",
     );
   } finally {
     await cli.end();
@@ -792,6 +803,11 @@ async function wipeSandbox(input) {
     // tenant columns are `REFERENCES app_user(user_id)`. See
     // shared/db/sandbox-user-mirror.js for the full why.
     await mirrorUsersIntoSandbox(cli);
+    // Then the real people (14250): a rebuilt sandbox still shows every live
+    // employee and company. After the users, because the copies point at them.
+    // Traps its own errors, so it cannot roll the rebuild back.
+    const people = await copyLivePeopleIntoSandbox(cli);
+    logger.info({ slug, ...people }, "copied live people into the rebuilt sandbox");
     await cli.query("COMMIT");
   } catch (err) {
     try {

@@ -1,7 +1,7 @@
 /**
  * Tenant request context (implements the empty stub). Runs after
  * hostTenantResolver (req.tenant) and after auth (optional req.user). Picks the
- * environment (sandbox only when NOT live and X-Praxis-Env: sandbox), binds an
+ * environment (sandbox when X-Praxis-Env: sandbox, live otherwise), binds an
  * ambient request-context, and exposes req.tenantDb(fn).
  */
 "use strict";
@@ -9,6 +9,27 @@
 const requestContext = require("../config/request-context");
 const registry = require("../services/tenant/registry.service");
 const { AppError } = require("../utils/errors");
+
+/**
+ * Which schema a request works in: the sandbox when it asks for it, live
+ * otherwise. Shared with the realtime socket, which must agree with HTTP.
+ *
+ * WHY `is_live` IS NOT PART OF THIS ANY MORE (2026-09-29). It used to read
+ * `!tenant.is_live && requested === "sandbox"`: once a tenant had been switched
+ * live in the platform console, TEST was switched off — SILENTLY. The client
+ * never learns `is_live`, so the TEST chip stayed on screen while every request
+ * behind it was answered from, and wrote to, LIVE. A person creating "test"
+ * employees on a live tenant was hiring real ones.
+ *
+ * The owner's decision is that TEST keeps working after go-live — it is where
+ * a live tenant tries things on its real people (migration 14250 copies them in)
+ * — so the header decides, whatever `is_live` says. What still protects LIVE is
+ * that it is the DEFAULT: anything but an explicit "sandbox" is live.
+ */
+function envFor(tenant, requestedHeader) {
+  const requested = String(requestedHeader || "").toLowerCase();
+  return tenant && requested === "sandbox" ? "sandbox" : "live";
+}
 
 function tenantContext(req, res, next) {
   if (!req.tenant) {
@@ -38,8 +59,7 @@ function tenantContext(req, res, next) {
     // loud, logged, reported 500 (API-F3).
     return next(new AppError("NO_TENANT_CONTEXT", "hostTenantResolver must run first", 500));
   }
-  const requested = String(req.headers["x-praxis-env"] || "").toLowerCase();
-  const env = !req.tenant.is_live && requested === "sandbox" ? "sandbox" : "live";
+  const env = envFor(req.tenant, req.headers["x-praxis-env"]);
 
   req.env = env;
 
@@ -184,4 +204,4 @@ function tenantContext(req, res, next) {
   return requestContext.run(ctx, () => next());
 }
 
-module.exports = { tenantContext };
+module.exports = { tenantContext, envFor };

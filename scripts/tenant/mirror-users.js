@@ -10,6 +10,11 @@
  * src/shared/db/sandbox-user-mirror.js), but tenants provisioned before that, and
  * any user created between the last sandbox wipe and today, need this one-off pass.
  *
+ * It then copies live PEOPLE (employees, their companies, and each account's
+ * employee link — migration 14250) that the sandbox does not have yet: the same
+ * pass every deploy runs, for when you want it now. Gap-fill only, so an edit
+ * made to a real person in TEST is left standing.
+ *
  * Read-only with respect to LIVE. Idempotent — re-running inserts nothing new.
  *
  *   node scripts/tenant/mirror-users.js --slug=smartls
@@ -23,6 +28,7 @@ const m = require("../../src/services/platform/migrator");
 const {
   mirrorUsersIntoSandbox,
 } = require("../../src/shared/db/sandbox-user-mirror");
+const { copyLivePeopleIntoSandbox } = require("../../src/shared/db/sandbox-live-copy");
 
 const a = Object.fromEntries(
   process.argv.slice(2).map((s) => {
@@ -76,6 +82,10 @@ async function run(slug) {
     // satisfying the FK. Worth naming rather than reporting success.
     const tail = left > 0 ? ` — ⚠️ ${left} still missing (conflicting sandbox rows)` : "";
     console.warn(`[praxis] ${slug}: mirrored ${res.mirrored} of ${missing} missing user(s)${tail}`);
+    const people = await copyLivePeopleIntoSandbox(cli);
+    console.warn(
+      `[praxis] ${slug}: copied ${people.employees} employee(s) and ${people.entities} company(ies) into sandbox, linked ${people.accounts} account(s)`,
+    );
   } finally {
     await cli.end();
   }

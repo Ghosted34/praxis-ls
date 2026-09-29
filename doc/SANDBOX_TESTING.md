@@ -32,6 +32,32 @@ test through the app (Section 3, step F). The seed sets `cached_receivables` /
 `cached_overdue` on clients so the receivables list and dashboard tiles still show
 numbers before you post anything.
 
+**Real people are in TEST too (2026-09-29, migration 14250).** Every live
+employee, and every live company, is copied into the sandbox — one way. A person
+hired or edited in LIVE appears in TEST straight away (a trigger on
+`live.employee` / `live.corporate_entity` copies the write), and the account
+provisioned for them is linked to them in TEST as well, so "My profile" works
+there. Nothing created in TEST ever reaches LIVE: the same trigger exists on the
+sandbox tables and does nothing there.
+
+- **Live wins.** You can edit a real person in TEST, and the edit stands until
+  that person is next changed in LIVE — then LIVE's record replaces the copy.
+  The Employee 360 shows a notice on every copied person saying so.
+- **What comes across is the person, not their history.** Contracts, payslips,
+  leave taken, documents and allowances stay in LIVE; each real person starts
+  TEST with a clean file.
+- **TEST staff numbers end in `-T`** (`SLAS-001-T`), so a TEST hire can never
+  take a real person's matricule. A TEST record that already held one (from
+  before this change) gives it up and keeps it with `-T`; the same goes for a
+  TEST company holding a real company's code.
+- **After a wipe or a deploy** the backfill (`live.sandbox_backfill_from_live()`,
+  run by `src/shared/db/sandbox-live-copy.js`) brings across anyone missing. It
+  only fills gaps, so a TEST edit survives a deploy. Run it by hand with
+  `node scripts/tenant/mirror-users.js --slug=<slug>`.
+- A copy can be refused — e.g. a link the sandbox cannot satisfy is cleared, and
+  a clash the rules above cannot settle is skipped. The live write always
+  commits regardless; the database logs a `WARNING` naming the row.
+
 User FKs (`owner_user_id`, `organiser_id`, …) are left NULL in the seeded rows.
 Identity users ARE mirrored into `sandbox.app_user` (same user_ids) every time the
 seed runs — business writes stamp the acting user, and those FKs must resolve.
@@ -81,15 +107,18 @@ asset depreciation), all in sandbox:
 node scripts/tenant/seed-money-path.js --slug=smartls --email=<admin> --password=<pw>
 ```
 
-It refuses to run against a live tenant (the sandbox header is ignored there), and
-every step is independent + logged, so an approval-gated step never blocks the rest.
+It asks the API (`/whoami`) to confirm the request lands in the sandbox and refuses
+to run otherwise, and every step is independent + logged, so an approval-gated step
+never blocks the rest.
 This automates Section 3.F below.
 
 ## 3. The full test flow
 
 Log in, then **switch to TEST mode** in the top bar (the LIVE/TEST toggle — it
 flips `X-Praxis-Env` to `sandbox` and reloads). Everything below is sandbox data;
-nothing you do here touches live.
+nothing you do here touches live. This works on a tenant that has gone live too:
+until 2026-09-29 the server silently ignored the toggle once `is_live` was set,
+so TEST writes on a live tenant landed in LIVE while the TEST chip was showing.
 
 **A. Master data & config.** Corporate entities (2, with bank block + logo
 fields), Clients (6, check credit limits + cached receivables), Suppliers (5, incl.

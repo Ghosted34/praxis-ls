@@ -53,7 +53,7 @@ vi.mock("@/lib/hr-api", async () => {
 });
 
 import * as api from "@/lib/hr-api";
-import { EditEmployeeForm } from "./employee-360";
+import { EditEmployeeForm, LiveCopyNotice } from "./employee-360";
 
 /**
  * The server's requirement list, as `GET /employees/readiness-requirements`
@@ -297,5 +297,35 @@ describe("Edit employee — the driving licence", () => {
     await user.click(save());
     await waitFor(() => expect(updateEmployee).toHaveBeenCalled());
     expect(addEmployeeDocument.mock.calls[0][1].file_data_url).toBeNull();
+  });
+});
+
+/**
+ * A REAL PERSON IN TEST (migration 14250). Live employees are copied into the
+ * sandbox; an edit made to the copy stands until the next live change, which
+ * replaces it. The notice is how the person editing learns that before their
+ * change quietly disappears.
+ */
+describe("Employee 360 — a live person seen in Test", () => {
+  const COPY = { ...EMPLOYEE, copied_from_live_at: "2026-09-29T08:00:00Z" } as api.Employee;
+
+  beforeEach(() => localStorage.removeItem("praxis.env"));
+
+  it("tells you in Test that this is a real employee and that Live replaces edits", async () => {
+    localStorage.setItem("praxis.env", "sandbox");
+    renderScreen(<LiveCopyNotice employee={COPY} />);
+    expect(await screen.findByText("A real employee, copied from Live")).toBeInTheDocument();
+    expect(screen.getByText(/next change to this person in Live replaces this copy/)).toBeInTheDocument();
+  });
+
+  it("says nothing about a person created in Test", () => {
+    localStorage.setItem("praxis.env", "sandbox");
+    renderScreen(<LiveCopyNotice employee={EMPLOYEE} />);
+    expect(screen.queryByText("A real employee, copied from Live")).not.toBeInTheDocument();
+  });
+
+  it("says nothing in Live", () => {
+    renderScreen(<LiveCopyNotice employee={COPY} />);
+    expect(screen.queryByText("A real employee, copied from Live")).not.toBeInTheDocument();
   });
 });

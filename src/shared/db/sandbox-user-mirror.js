@@ -33,9 +33,14 @@
  * auth, sessions and RBAC all resolve against `req.identityDb` (live), so nothing
  * signs in "as" a sandbox row. `password_hash` comes along only because the column
  * is NOT NULL — it is never read from this schema. `totp_secret_enc` and
- * `godmode_pin_hash` are omitted for the same reason. `employee_id` is deliberately
- * not copied: it references `sandbox.employee`, which a wipe empties, so carrying
- * it would trade one 23503 for another.
+ * `godmode_pin_hash` are omitted for the same reason.
+ *
+ * `employee_id` is copied only when that employee EXISTS in the sandbox. Before
+ * 14250 it never did — a wipe empties `sandbox.employee` — so the link was left
+ * out entirely and "My profile" in TEST found nobody. Live employees are now
+ * copied into the sandbox (shared/db/sandbox-live-copy.js), so the link resolves
+ * for them; for a person the sandbox does not hold it stays NULL rather than
+ * trading one 23503 for another.
  */
 "use strict";
 
@@ -46,6 +51,11 @@ const { logger } = require("../../config/logger");
 // this schema has no business holding.
 const MIRROR_COLS =
   "user_id, username, email, full_name, password_hash, is_2fa_enabled, status, created_at, updated_at";
+
+// The live user's employee, if the sandbox holds a copy of that person; NULL
+// otherwise (see the header). Reads `l`, the live.app_user row being mirrored.
+const SANDBOX_EMPLOYEE_OF_L =
+  "(SELECT e.employee_id FROM sandbox.employee e WHERE e.employee_id = l.employee_id)";
 
 /**
  * Does this database have a sandbox schema with an app_user table?
@@ -89,20 +99,22 @@ async function mirrorUsersIntoSandbox(client, { userId = null } = {}) {
   const where = userId ? " WHERE user_id = $1" : "";
   const params = userId ? [userId] : [];
   const res = await client.query(
-    `INSERT INTO sandbox.app_user (${MIRROR_COLS})
-     SELECT ${MIRROR_COLS} FROM live.app_user${where}
+    `INSERT INTO sandbox.app_user (${MIRROR_COLS}, employee_id)
+     SELECT ${MIRROR_COLS}, ${SANDBOX_EMPLOYEE_OF_L} FROM live.app_user l${where}
      ON CONFLICT DO NOTHING`,
     params,
   );
   await client.query(
     `UPDATE sandbox.app_user s
         SET status = l.status, full_name = l.full_name,
-            is_2fa_enabled = l.is_2fa_enabled, updated_at = l.updated_at
+            is_2fa_enabled = l.is_2fa_enabled, updated_at = l.updated_at,
+            employee_id = ${SANDBOX_EMPLOYEE_OF_L}
        FROM live.app_user l
       WHERE s.user_id = l.user_id${userId ? " AND l.user_id = $1" : ""}
         AND (s.status IS DISTINCT FROM l.status
              OR s.full_name IS DISTINCT FROM l.full_name
-             OR s.is_2fa_enabled IS DISTINCT FROM l.is_2fa_enabled)`,
+             OR s.is_2fa_enabled IS DISTINCT FROM l.is_2fa_enabled
+             OR s.employee_id IS DISTINCT FROM ${SANDBOX_EMPLOYEE_OF_L})`,
     params,
   );
 

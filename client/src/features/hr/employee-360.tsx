@@ -943,6 +943,26 @@ function Section({
   );
 }
 
+/**
+ * In Test, on a real person copied in from Live (migration 14250): say so, and
+ * say what happens to an edit. Test edits are allowed and stand until the next
+ * Live change to this person, which replaces the copy — the owner's "live
+ * wins". Said up front, before an Edit that would otherwise vanish without a
+ * word. Renders nothing in Live, and nothing on a person created in Test.
+ */
+export function LiveCopyNotice({ employee }: { employee: api.Employee }) {
+  if (tokenStore.getEnv() === "live" || !employee.copied_from_live_at) return null;
+  return (
+    <div className="mt-3">
+      <Callout tone="info" title={tr("A real employee, copied from Live")}>
+        {tr(
+          "Changes you make in Test stay in Test. The next change to this person in Live replaces this copy, and nothing you do here ever reaches Live.",
+        )}
+      </Callout>
+    </div>
+  );
+}
+
 export function EditEmployeeForm({
   employee,
   onClose,
@@ -1852,6 +1872,7 @@ function EmployeeDetail({
               ))}
           </div>
         </div>
+        <LiveCopyNotice employee={employee} />
         {error && (
           <div className="mt-3">
             <ErrorState message={error} />

@@ -28,6 +28,7 @@ const { config } = require("../config/env");
 const { logger } = require("../config/logger");
 const registry = require("../services/tenant/registry.service");
 const identityCache = require("../shared/cache/identity-cache");
+const { envFor } = require("../middleware/tenant-context");
 
 let io = null;
 
@@ -115,8 +116,9 @@ async function authenticate(socket, next) {
     const user = await registry.withTenantConnection(tenant, "live", (c) => identityCache.getAuthUser(c, payload.sub));
     if (!user || user.status !== "ACTIVE") return next(new Error("USER_INACTIVE"));
 
-    const requested = String(auth.env || "").toLowerCase();
-    const env = !tenant.is_live && requested === "sandbox" ? "sandbox" : "live";
+    // The same rule as HTTP (middleware/tenant-context envFor), so a socket and
+    // the page that opened it can never disagree about where they are.
+    const env = envFor(tenant, auth.env);
     socket.data = { tenant, tenantSlug: tenant.slug, env, userId: user.user_id };
     return next();
   } catch {

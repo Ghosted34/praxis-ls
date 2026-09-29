@@ -524,11 +524,21 @@ describe("the middleware chain, as a chain (TC-C12)", () => {
   });
 
   describe("the LIVE/TEST toggle", () => {
-    it("ignores X-Praxis-Env on a live tenant", async () => {
+    it("honours sandbox on a tenant that has gone live", async () => {
+      // It used to ignore the header once `is_live` was set, and the client
+      // never learns `is_live` — so the TEST chip stayed on while every write
+      // behind it landed in LIVE. TEST now keeps working after go-live.
       const res = await get("/api/dossiers", {
         token: tokenFor(),
         headers: { "X-Praxis-Env": "sandbox" },
       }).expect(200);
+      expect(res.body.env).toBe("sandbox");
+      expect(res.body.ctx_env).toBe("sandbox");
+    });
+
+    it("stays LIVE on a live tenant when no environment is asked for", async () => {
+      // LIVE is the default, not something a request has to opt into.
+      const res = await get("/api/dossiers", { token: tokenFor() }).expect(200);
       expect(res.body.env).toBe("live");
     });
 

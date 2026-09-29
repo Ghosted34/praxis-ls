@@ -19,7 +19,7 @@ const repo = require("../../src/modules/master/employees/employees.repo");
  * modelled rather than stubbed: `next_no` holds the next FREE number and the
  * statement returns it AFTER incrementing.
  */
-function fakeClient({ entityCode = "SLAS", taken = [] } = {}) {
+function fakeClient({ entityCode = "SLAS", taken = [], schema = "live" } = {}) {
   const seq = new Map();
   const queries = [];
   return {
@@ -27,6 +27,9 @@ function fakeClient({ entityCode = "SLAS", taken = [] } = {}) {
     seq,
     async query(sql, params) {
       queries.push({ sql, params });
+      if (/current_schema\(\)/i.test(sql)) {
+        return { rows: [{ schema }] };
+      }
       if (/FROM corporate_entity/i.test(sql)) {
         return { rows: entityCode ? [{ code: entityCode }] : [] };
       }
@@ -107,5 +110,30 @@ describe("allocating a matricule", () => {
     const taken = Array.from({ length: 40 }, (_, i) => `SLAS-${String(i + 1).padStart(3, "0")}`);
     const c = fakeClient({ taken });
     expect(await repo.allocateStaffNo(c, { entity_id: "ent-1" })).toBeNull();
+  });
+});
+
+describe("a matricule allocated in TEST (14250)", () => {
+  // Live people are copied into the sandbox with their REAL matricules, and the
+  // sandbox counts on its own. Without a separate series, a TEST hire and the
+  // next real hire would both be SLAS-012, and the real person's copy would be
+  // refused by the unique index — a real employee missing from TEST.
+
+  test("ends in -T, so it can never be a real person's number", async () => {
+    const c = fakeClient({ schema: "sandbox" });
+    expect(await repo.allocateStaffNo(c, { entity_id: "ent-1" })).toBe("SLAS-001-T");
+    expect(await repo.allocateStaffNo(c, { entity_id: "ent-1" })).toBe("SLAS-002-T");
+  });
+
+  test("a real person's copy holding SLAS-001 does not push the TEST series along", async () => {
+    // The copy is SLAS-001; the TEST hire is SLAS-001-T. Different values, so
+    // neither the unique index nor the clash loop sees the other.
+    const c = fakeClient({ schema: "sandbox", taken: ["SLAS-001"] });
+    expect(await repo.allocateStaffNo(c, { entity_id: "ent-1" })).toBe("SLAS-001-T");
+  });
+
+  test("LIVE numbers carry no suffix", async () => {
+    const c = fakeClient({ schema: "live" });
+    expect(await repo.allocateStaffNo(c, { entity_id: "ent-1" })).toBe("SLAS-001");
   });
 });

@@ -266,3 +266,30 @@ describe("where a person stands on signing in", () => {
     expect(signInState({ status: "ACTIVE" }, { expires_at: "2026-09-22T00:00:00Z" }, now)).toBe("INVITE_EXPIRED");
   });
 });
+
+describe("a portal person always has a name", () => {
+  const { schemas } = require("../../src/modules/portal_auth/portal_auth.validator");
+
+  it("staff cannot give access without one", () => {
+    expect(schemas.staffPersonAdd.safeParse({ email: "paul@goum.cm" }).success).toBe(false);
+    expect(schemas.staffPersonAdd.safeParse({ email: "paul@goum.cm", full_name: "   " }).success).toBe(false);
+    expect(schemas.staffPersonAdd.safeParse({ email: "paul@goum.cm", full_name: "Paul Atiock" }).success).toBe(true);
+  });
+
+  it("nor can a client's admin inviting a colleague from the portal", () => {
+    expect(schemas.teamInvite.safeParse({ email: "awa@goum.cm" }).success).toBe(false);
+    expect(schemas.teamInvite.safeParse({ email: "awa@goum.cm", full_name: "Awa Ndiaye" }).success).toBe(true);
+  });
+
+  it("staff may correct a name but not blank it, and the person may set their own", () => {
+    expect(schemas.staffPersonUpdate.safeParse({ full_name: "Paul Atiock" }).success).toBe(true);
+    expect(schemas.staffPersonUpdate.safeParse({ full_name: "" }).success).toBe(false);
+    expect(schemas.staffPersonUpdate.safeParse({ access_scope: "ALL" }).success).toBe(true);
+    expect(schemas.profile.safeParse({ full_name: "Paul Atiock" }).success).toBe(true);
+    expect(schemas.profile.safeParse({}).success).toBe(false);
+  });
+
+  it("the IAM invite doubles as Resend, so the name is checked where a login is created", () => {
+    expect(schemas.invite.safeParse({ email: "cfo@acme.cm" }).success).toBe(true);
+  });
+});

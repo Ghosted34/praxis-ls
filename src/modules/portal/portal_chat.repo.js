@@ -279,6 +279,7 @@ async function inbox(client, { limit = 300 } = {}) {
      ), last AS (
        SELECT DISTINCT ON (m.client_id, m.dossier_id)
               m.client_id, m.dossier_id, m.message_id, m.body, m.direction, m.created_at,
+              m.author_email::text AS author_email, m.portal_user_id,
               (m.location_lat IS NOT NULL) AS has_location,
               (SELECT a.kind FROM client_message_attachment a
                 WHERE a.message_id = m.message_id ORDER BY a.position LIMIT 1) AS attachment_kind

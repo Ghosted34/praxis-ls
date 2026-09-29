@@ -118,9 +118,13 @@ function messageView(row, { me = null, lang = "en" } = {}) {
     direction: row.direction,
     body: row.body || "",
     created_at: row.created_at,
+    // A client's message names the colleague who wrote it: its login id and
+    // email are here, and the controller reads the name from the identity
+    // schema (the login lives there, the message in the business schema).
     author: {
-      name: row.direction === "STAFF" ? row.author_name || null : null,
+      name: row.direction === "STAFF" ? row.author_name || null : row.author_portal_name || null,
       email: row.direction === "CLIENT" ? row.author_email || null : null,
+      portal_user_id: row.direction === "CLIENT" ? row.portal_user_id || null : null,
     },
     mine,
     // The team has read it — the client's "seen" tick. Only meaningful on the
@@ -283,7 +287,7 @@ async function send(c, { clientId, me, scope, thread, body = "", milestoneId = n
     eventTypeKey: "portal.client_message", moduleKey: MODULE, entityRef: `client_message:${row.message_id}`, actorUserId: null,
     payload: { client_id: clientId, dossier_id: dossier ? dossier.dossier_id : null, kind: stored ? stored.kind : location ? "LOCATION" : "TEXT" },
   });
-  await alertTeam(c, { clientId, dossier, row, kind: stored ? stored.kind : location ? "LOCATION" : "TEXT" });
+  await alertTeam(c, { clientId, dossier, row, kind: stored ? stored.kind : location ? "LOCATION" : "TEXT", who: me.full_name || me.email || null });
 
   const [saved] = await repo.messages(c, { clientId, dossierId: dossier && dossier.dossier_id, limit: 1 });
   return messageView(saved && saved.message_id === row.message_id ? saved : { ...row, dossier_ref: dossier && dossier.ref }, { me, lang });
@@ -398,7 +402,7 @@ async function attachmentBytes(a, size) {
  * One alert per person per thread per minute: a client typing five short
  * lines is one ping, not five. The link opens the conversation in the inbox.
  */
-async function alertTeam(c, { clientId, dossier, row, kind }) {
+async function alertTeam(c, { clientId, dossier, row, kind, who = null }) {
   try {
     const audience = await repo.staffAudience(c, { clientId, dossier });
     let ids = [...audience.manager, ...audience.owners, ...audience.md];
@@ -410,7 +414,10 @@ async function alertTeam(c, { clientId, dossier, row, kind }) {
     const { rows } = await c.query("SELECT COALESCE(name, legal_name) AS name FROM client_master WHERE client_id = $1", [clientId]);
     const company = (rows[0] && rows[0].name) || "A client";
     const thread = repo.threadKey(dossier && dossier.dossier_id);
-    const body = previewOf(row) || KIND_LINE[kind] || KIND_LINE.TEXT;
+    // "Paul Atiock: Is the container out?" — which colleague at the client
+    // wrote, not only which company.
+    const line = previewOf(row) || KIND_LINE[kind] || KIND_LINE.TEXT;
+    const body = who ? `${who}: ${line}` : line;
     for (const userId of ids) {
       // One notify per person: each carries its own one-a-minute claim.
       await notifications.notify(c, {
@@ -463,6 +470,11 @@ async function staffInbox(c, { filter = "all", actor = {} }) {
       preview: previewOf(r),
       kind: contentKind(r),
       at: r.created_at,
+      // The colleague at the client who wrote it; the controller adds the name.
+      author:
+        r.direction === "CLIENT"
+          ? { name: null, email: r.author_email || null, portal_user_id: r.portal_user_id || null }
+          : null,
     },
     manager: r.manager_user_id ? { user_id: r.manager_user_id, name: r.manager_name || null } : null,
     mine: !!me && (r.manager_user_id === me || r.owner_ops_id === me || r.owner_sales_id === me),

@@ -42,7 +42,14 @@ export type InboxItem = {
   dossier_ref: string | null;
   unread: number;
   waiting_since: string | null;
-  last: { direction: "CLIENT" | "STAFF"; preview: string | null; kind: string; at: string };
+  last: {
+    direction: "CLIENT" | "STAFF";
+    preview: string | null;
+    kind: string;
+    at: string;
+    /** The colleague at the client who wrote it (a client message only). */
+    author?: { name: string | null; email: string | null } | null;
+  };
   manager: { user_id: string; name: string | null } | null;
   mine: boolean;
 };
@@ -60,10 +67,12 @@ const KIND: Record<string, string> = {
   TEXT: "Message",
 };
 
-/** "Client · can you quote…" / "Team · done" — whose line it is, then the line. */
+/** "Paul Atiock · can you quote…" / "Team · done" — who wrote it, then the line. */
 function lastLine(i: InboxItem): string {
   const what = i.last.preview || tr(KIND[i.last.kind] || KIND.TEXT);
-  return `${i.last.direction === "CLIENT" ? tr("Client") : tr("Team")} · ${what}`;
+  const who =
+    i.last.direction === "CLIENT" ? (i.last.author && (i.last.author.name || i.last.author.email)) || tr("Client") : tr("Team");
+  return `${who} · ${what}`;
 }
 
 export function ClientInboxPage() {

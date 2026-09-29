@@ -110,6 +110,16 @@ jest.mock("../../src/modules/portal_auth/portal_auth.repo", () => ({
     mockCalls.setStatus.push({ id, status });
     return u;
   },
+  setFullName: async (c, id, fullName) => {
+    const u = mockById(id);
+    if (!u) return null;
+    u.full_name = fullName;
+    return u;
+  },
+  fillMissingName: async (c, id, fullName) => {
+    const u = mockById(id);
+    if (u && !(u.full_name && u.full_name.trim())) u.full_name = fullName;
+  },
   touchLogin: async (c, id) => {
     mockCalls.touchLogin.push(id);
   },
@@ -503,6 +513,37 @@ describe("portal auth (TC-C10)", () => {
       expect(out.created).toBe(false);
       expect(out.portal_user_id).toBe("pu-1");
       expect(mockCalls.insert).toHaveLength(0);
+    });
+
+    it("refuses to create a login with no name — the team must know who it is", async () => {
+      const err = await rejection(
+        svc.inviteUser(client, { email: "nameless@acme.example", origin: "https://portal.example" }),
+      );
+      expect(err.code).toBe("NAME_REQUIRED");
+      expect(mockCalls.insert).toHaveLength(0);
+      expect(mockCalls.mail).toHaveLength(0);
+    });
+
+    it("re-sends to an existing login without asking for the name again", async () => {
+      const out = await svc.inviteUser(client, { email: "client@acme.example", origin: "https://portal.example" });
+      expect(out.created).toBe(false);
+      expect(mockCalls.mail).toHaveLength(1);
+    });
+
+    it("gives a nameless older login the name typed at invite, but never overwrites one", async () => {
+      mockUsers[0].full_name = null;
+      await invite("client@acme.example", "Paul Atiock");
+      expect(mockUsers[0].full_name).toBe("Paul Atiock");
+      await invite("client@acme.example", "Someone Else");
+      expect(mockUsers[0].full_name).toBe("Paul Atiock");
+    });
+
+    it("lets staff or the person correct a name, and never blank it", async () => {
+      const row = await svc.setFullName(client, { portalUserId: "pu-1", fullName: "  Ada Lovelace " });
+      expect(row.full_name).toBe("Ada Lovelace");
+      const err = await rejection(svc.setFullName(client, { portalUserId: "pu-1", fullName: "   " }));
+      expect(err.code).toBe("NAME_REQUIRED");
+      expect(mockUsers[0].full_name).toBe("Ada Lovelace");
     });
 
     it("reactivates a disabled login when it is re-invited", async () => {

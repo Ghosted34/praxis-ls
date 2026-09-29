@@ -18,6 +18,7 @@ import { useTranslation } from "react-i18next";
 import {
   portalTeam,
   portalInvite,
+  portalSaveProfile,
   portalUpdateMember,
   portalRemoveMember,
   portalPasskeys,
@@ -98,6 +99,7 @@ export function AccountPage() {
   const u = portal.me.portal_user;
   const [out, setOut] = React.useState<"plain" | "forget" | null>(null);
   const [busy, setBusy] = React.useState(false);
+  const [naming, setNaming] = React.useState(false);
 
   return (
     <div className="mx-auto grid max-w-2xl gap-6">
@@ -117,8 +119,16 @@ export function AccountPage() {
               </Pill>
             ) : null}
           </div>
+          <button
+            type="button"
+            className="mt-2 text-sm font-semibold text-primary-ink underline-offset-2 hover:underline"
+            onClick={() => setNaming(true)}
+          >
+            {u.full_name ? t("portal.account.editName") : t("portal.account.addName")}
+          </button>
         </div>
       </section>
+      <NameSheet open={naming} current={u.full_name || ""} onClose={() => setNaming(false)} onSaved={portal.reloadMe} />
 
       <KindSwitch />
       {portal.kind === "CLIENT" ? <Team /> : null}
@@ -289,6 +299,81 @@ function ScopeChoice({ value, onChange }: { value: Scope; onChange: (s: Scope) =
   );
 }
 
+/** Their own name — kept by them, and correctable by the team from the ERP. */
+function NameSheet({
+  open,
+  current,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  current: string;
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const toast = useToast();
+  const [name, setName] = React.useState(current);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    setName(current);
+    setError(null);
+  }, [open, current]);
+
+  const valid = !!name.trim() && name.trim() !== current.trim();
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      await portalSaveProfile({ full_name: name.trim() });
+      await onSaved();
+      toast(t("portal.account.nameSaved"));
+      onClose();
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title={t("portal.account.nameTitle")}
+      footer={
+        <button type="button" className="pt-btn pt-btn-primary pt-btn-block" disabled={!valid || busy} onClick={() => void save()}>
+          <Busy busy={busy}>
+            <CheckIcon size={20} />
+          </Busy>
+          {t("portal.team.saved")}
+        </button>
+      }
+    >
+      <div className="grid gap-4">
+        <p className="text-sm text-muted-foreground">{t("portal.account.nameBody")}</p>
+        <TextField
+          label={t("portal.account.nameLabel")}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          autoComplete="name"
+          maxLength={120}
+          required
+        />
+        {error ? (
+          <p role="alert" className="text-sm font-medium text-[rgb(var(--bad))]">
+            {error}
+          </p>
+        ) : null}
+      </div>
+    </Sheet>
+  );
+}
+
 function InviteSheet({
   open,
   defaultScope,
@@ -319,13 +404,14 @@ function InviteSheet({
     setError(null);
   }, [open, defaultScope]);
 
-  const valid = /^\S+@\S+\.\S+$/.test(email.trim());
+  // A name is required: the team has to know who at the company is writing.
+  const valid = /^\S+@\S+\.\S+$/.test(email.trim()) && !!name.trim();
 
   async function send() {
     setBusy(true);
     setError(null);
     try {
-      await portalInvite({ email: email.trim(), ...(name.trim() ? { full_name: name.trim() } : {}), access_scope: scope, is_client_admin: admin });
+      await portalInvite({ email: email.trim(), full_name: name.trim(), access_scope: scope, is_client_admin: admin });
       toast(t("portal.team.inviteSent", { email: email.trim() }));
       onDone();
       onClose();
@@ -352,7 +438,10 @@ function InviteSheet({
     >
       <div className="grid gap-4">
         <TextField label={t("portal.signin.email")} type="email" inputMode="email" autoCapitalize="none" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} />
-        <TextField label={t("portal.team.name")} value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" maxLength={120} />
+        <div>
+          <TextField label={t("portal.team.name")} value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" maxLength={120} required />
+          <p className="mt-1.5 text-xs text-muted-foreground">{t("portal.team.nameHint")}</p>
+        </div>
         <div>
           <p className="pt-label">{t("portal.team.access")}</p>
           <ScopeChoice value={scope} onChange={setScope} />

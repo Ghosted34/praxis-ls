@@ -17,7 +17,7 @@
  * Clients list's "To review" queue (every upload waiting for operations).
  */
 import * as React from "react";
-import { tr } from "@/lib/i18n";
+import { tr, tv } from "@/lib/i18n";
 import { tenant, tenantDownload } from "@/lib/api-client";
 import { errMsg, useList } from "@/lib/use-resource";
 import { money, dateFmt, todayISO } from "@/lib/format";
@@ -62,6 +62,9 @@ export type StaffRequest = {
   answer_doc_id: string | null;
   answer_doc_name: string | null;
   answered_at: string | null;
+  /** Who at the client sent it: their login's name, and the address it came from. */
+  answered_by_email?: string | null;
+  answered_by_name?: string | null;
   review_note: string | null;
   created_at: string;
 };
@@ -81,12 +84,19 @@ export type StaffProof = {
   status: "SUBMITTED" | "CONFIRMED" | "REJECTED";
   review_note: string | null;
   submitted_by_email: string | null;
+  submitted_by_name?: string | null;
   created_at: string;
   has_file: boolean;
   allocations: { invoice_id: string; doc_number: string | null; amount: number }[];
 };
 
 type DocType = { code: string; name_en: string | null; name_fr: string | null };
+
+/** "by Paul Atiock (paul@goum.cm)" — who at the client sent it. */
+function byLine(name: string | null | undefined, email: string | null | undefined): string | null {
+  if (!name && !email) return null;
+  return tv("by {{who}}", { who: name && email ? `${name} (${email})` : name || email || "" });
+}
 
 const REQ_TONE: Record<StaffRequest["status"], Tone> = {
   OPEN: "warn",
@@ -228,6 +238,7 @@ export function ClientRequestsPanel({
                     r.dossier_ref,
                     r.due_on ? `${tr("Due")} ${dateFmt(r.due_on)}` : null,
                     r.answered_at ? `${tr("Sent")} ${dateFmt(r.answered_at)}` : null,
+                    byLine(r.answered_by_name, r.answered_by_email),
                   ]
                     .filter(Boolean)
                     .join(" · ")}
@@ -497,7 +508,7 @@ export function PaymentProofQueue({ clientId, compact = false, onChanged }: { cl
                     `${tr("Paid")} ${dateFmt(p.paid_on)}`,
                     p.reference,
                     p.allocations.map((a) => a.doc_number).filter(Boolean).join(", ") || null,
-                    p.submitted_by_email,
+                    byLine(p.submitted_by_name, p.submitted_by_email),
                   ]
                     .filter(Boolean)
                     .join(" · ")}

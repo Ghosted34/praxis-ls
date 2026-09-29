@@ -184,8 +184,41 @@ describe("inviting someone", () => {
     await user.click(await screen.findByRole("button", { name: "Invite someone" }));
     const dialog = await screen.findByRole("dialog");
     await user.type(within(dialog).getByRole("textbox", { name: /Email/ }), "esi@acme.cm");
+    await user.type(within(dialog).getByRole("textbox", { name: /Name/ }), "Esi Mensah");
     await user.click(within(dialog).getByRole("button", { name: "Send invitation" }));
     expect(await screen.findByText(/has access, but the email could not be sent/)).toBeInTheDocument();
+  });
+
+  it("will not send without a name — the team has to know who it is", async () => {
+    const user = userEvent.setup();
+    renderScreen(<ClientPortalPeople clientId="c1" />, { routes: { [PEOPLE]: { members: [], defaults: DEFAULTS } } });
+    await user.click(await screen.findByRole("button", { name: "Invite someone" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByRole("textbox", { name: /Email/ }), "esi@acme.cm");
+    expect(within(dialog).getByRole("button", { name: "Send invitation" })).toBeDisabled();
+    await user.type(within(dialog).getByRole("textbox", { name: /Name/ }), "Esi Mensah");
+    expect(within(dialog).getByRole("button", { name: "Send invitation" })).toBeEnabled();
+    expect(writes()).toEqual([]);
+  });
+});
+
+describe("a person with no name", () => {
+  it("is flagged on the list, and staff add the name from Edit", async () => {
+    const user = userEvent.setup();
+    replies.set(`POST ${PEOPLE}/g-kofi`, { ...kofi, full_name: "Kofi Boateng" });
+    renderScreen(<ClientPortalPeople clientId="c1" />, { routes: { [PEOPLE]: { members: [kofi], defaults: DEFAULTS } } });
+    expect(await screen.findByText("Name missing")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByRole("textbox", { name: /Name/ }), "Kofi Boateng");
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+    expect(writes()).toEqual([
+      {
+        path: `${PEOPLE}/g-kofi`,
+        method: "POST",
+        body: { full_name: "Kofi Boateng", access_scope: "BILLING", is_client_admin: false, expires_at: null },
+      },
+    ]);
   });
 });
 

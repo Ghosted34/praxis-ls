@@ -250,6 +250,9 @@ export type PortalMe = {
   company: { client_id: string; name: string; legal_name: string | null; language: string | null } | null;
 };
 export const portalMe = () => portalApi<PortalMe>("/me");
+/** Their own name — the one the team sees on everything they send. */
+export const portalSaveProfile = (body: { full_name: string }) =>
+  portalApi<{ portal_user_id: string; email: string; full_name: string }>("/me/profile", { method: "POST", body });
 
 // ── Client: home, shipments ─────────────────────────────────────────────────
 
@@ -577,7 +580,7 @@ export type TeamMember = {
 };
 export const portalTeam = () =>
   portalApi<{ can_manage: boolean; default_scope?: TeamMember["access_scope"]; members: TeamMember[] }>("/client/team");
-export const portalInvite = (body: { email: string; full_name?: string; access_scope: Scope; is_client_admin?: boolean }) =>
+export const portalInvite = (body: { email: string; full_name: string; access_scope: Scope; is_client_admin?: boolean }) =>
   portalApi<{ emailed: boolean }>("/client/team", { method: "POST", body });
 export const portalUpdateMember = (id: string, body: { access_scope?: Scope; is_client_admin?: boolean }) =>
   portalApi<TeamMember>(`/client/team/${encodeURIComponent(id)}`, { method: "POST", body });
@@ -634,7 +637,7 @@ export type ChatMessage = {
   direction: "STAFF" | "CLIENT";
   body: string;
   created_at: string;
-  author: { name: string | null; email: string | null };
+  author: { name: string | null; email: string | null; portal_user_id?: string | null };
   mine: boolean;
   /** On my own messages: the team has read it. */
   seen: boolean | null;

@@ -166,6 +166,11 @@ module.exports = {
     const company = clientId ? await req.tenantDb((c) => portalClient.clientIdentity(c, { clientId })) : null;
     res.json({ data: { portal_user: req.portal.user, grants, company } });
   }),
+  saveProfile: asyncHandler(async (req, res) => {
+    const user = await req.identityDb((c) =>
+      service.setFullName(c, { portalUserId: req.portal.user.portal_user_id, fullName: req.body.full_name }));
+    res.json({ data: { portal_user_id: user.portal_user_id, email: user.email, full_name: user.full_name } });
+  }),
 
   // ── Scoped data views (grant enforced by portalAuth) ──
   client: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => portal.clientView(c, { clientId: req.portal.clientId })) })),

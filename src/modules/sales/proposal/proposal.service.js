@@ -117,7 +117,9 @@ async function transition(client, { id, to, entityId = null, actor = {} }) {
   } catch (err) { await client.query("ROLLBACK"); throw err; }
 }
 /** Accept a SENT proposal; optionally create a quotation from its lines. */
-async function accept(client, { id, createQuotation = false, entityId = null, actor = {} }) {
+// `by` is the person at the client who accepted it in their portal ({ name,
+// email }); staff acceptances leave it out and are named by `actor`.
+async function accept(client, { id, createQuotation = false, entityId = null, actor = {}, by = null }) {
   const before = await repo.get(client, id);
   if (!before) throw new AppError("NOT_FOUND", "Proposal not found", 404);
   assertTransition(before.status, "ACCEPTED");
@@ -132,7 +134,10 @@ async function accept(client, { id, createQuotation = false, entityId = null, ac
       quotationId = await repo.createQuotation(client, { proposal: before, entityId, totalHt: totalHt(lines), docNumber: number });
       await repo.update(client, id, { converted_quote_id: quotationId });
     }
-    await emitEvent(client, { eventTypeKey: events.ACCEPTED, moduleKey: events.MODULE, entityRef: ref(id), actorUserId: actor.user_id || null });
+    await emitEvent(client, {
+      eventTypeKey: events.ACCEPTED, moduleKey: events.MODULE, entityRef: ref(id), actorUserId: actor.user_id || null,
+      ...(by ? { payload: { by } } : {}),
+    });
     await audit(client, { actorUserId: actor.user_id || null, action: events.ACCEPTED, moduleKey: events.MODULE, entityRef: ref(id), after: { quotation_id: quotationId } });
     await client.query("COMMIT");
     return { proposal: row, quotation_id: quotationId };

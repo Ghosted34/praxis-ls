@@ -87,6 +87,33 @@ async function peopleWithLogins(req, grants) {
 }
 
 /**
+ * Who at the client did it. A message, a file sent for a request and a proof of
+ * payment carry the person's login id or email (business data); the NAME is on
+ * the login, in the identity schema, so it is read apart and joined here — the
+ * way `peopleWithLogins` joins a grant to its login. A name staff corrected
+ * later shows on everything that person already sent.
+ *
+ * `refs` are `{ id, email }`; the result looks one up, or answers null.
+ */
+async function portalNames(req, refs) {
+  const ids = refs.map((r) => r && r.id).filter(Boolean);
+  const emails = refs.map((r) => r && r.email).filter(Boolean);
+  if (!ids.length && !emails.length) return () => null;
+  const { byId, byEmail } = await req.identityDb((c) => authService.namesFor(c, { ids, emails }));
+  return (r) =>
+    (r && r.id && byId.get(r.id)) || (r && r.email && byEmail.get(String(r.email).toLowerCase())) || null;
+}
+
+/** Name the colleague who wrote each client message (`author.name`). */
+async function nameAuthors(req, messages) {
+  const list = (messages || []).filter((m) => m && m.direction === "CLIENT" && m.author);
+  const ref = (m) => ({ id: m.author.portal_user_id, email: m.author.email });
+  const lookup = await portalNames(req, list.map(ref));
+  for (const m of list) m.author.name = m.author.name || lookup(ref(m));
+  return messages;
+}
+
+/**
  * Send (or re-send) the set-password link. The grant is already committed by
  * the time this runs, so a failure is REPORTED, never thrown: rolling back a
  * grant because a mail server was down is how a client ends up with nobody
@@ -100,6 +127,11 @@ async function sendInvite(req, { email, fullName }) {
       authService.inviteUser(c, { email, fullName, ip: req.ip, origin, tenantName: name }));
     return { sent: true, emailed: r.emailed === true };
   } catch (err) {
+    // An older grant with no login and no name: nothing was sent, and the fix
+    // is theirs to make, so say which — not "try again", which never works.
+    if (err && err.code === "NAME_REQUIRED") {
+      throw new AppError("NAME_REQUIRED", "Add their name before sending the invitation — open Edit.", 422);
+    }
     logger.error({ err, email }, "[portal] staff invite failed — the grant stands, the row offers Resend");
     return { sent: false, emailed: false };
   }
@@ -154,12 +186,18 @@ function beforeOf(v) {
   if (Number.isNaN(d.getTime())) throw new AppError("VALIDATION_ERROR", "before must be a date-time", 422);
   return d.toISOString();
 }
-const meOf = (req) => ({ portal_user_id: req.portal.user.portal_user_id, email: req.portal.user.email });
+const meOf = (req) => ({
+  portal_user_id: req.portal.user.portal_user_id,
+  email: req.portal.user.email,
+  full_name: req.portal.user.full_name || null,
+});
+/** The signed-in person's name, for the team's side of what they send. */
+const nameOf = (req) => (req.portal && req.portal.user && req.portal.user.full_name) || null;
 /** When this person's access began — "unread" never reaches back past it. */
 const sinceOf = (req) => (req.portal.grant && req.portal.grant.created_at) || null;
 const chatMeta = (b) => ({ width: b.width, height: b.height, durationMs: b.duration_ms });
 /** The signer, from the session — never from the body (guide §6.3). */
-const signerOf = (req) => ({ ...meOf(req), full_name: req.portal.user.full_name || null });
+const signerOf = (req) => meOf(req);
 const ipOf = (req) => req.ip || null;
 const uaOf = (req) => String(req.get("user-agent") || "").slice(0, 300) || null;
 const tenantNameOf = (req) => (req.tenant && req.tenant.name) || "";
@@ -192,13 +230,13 @@ module.exports = {
     const file = readUpload(req);
     res.status(201).json({
       data: await req.tenantDb((c) =>
-        service.uploadForRequest(c, { clientId: clientId(req), requestId: req.params.id, file, email: emailOf(req), slug: slugOf(req) })),
+        service.uploadForRequest(c, { clientId: clientId(req), requestId: req.params.id, file, email: emailOf(req), name: nameOf(req), slug: slugOf(req) })),
     });
   }),
   answerRequest: asyncHandler(async (req, res) => {
     res.json({
       data: await req.tenantDb((c) =>
-        service.answerRequest(c, { clientId: clientId(req), requestId: req.params.id, text: req.body.text, email: emailOf(req) })),
+        service.answerRequest(c, { clientId: clientId(req), requestId: req.params.id, text: req.body.text, email: emailOf(req), name: nameOf(req) })),
     });
   }),
   requestFile: asyncHandler(async (req, res) => {
@@ -215,6 +253,7 @@ module.exports = {
           note: req.body.note || null,
           file,
           email: emailOf(req),
+          name: nameOf(req),
           slug: slugOf(req),
         })),
     });
@@ -244,6 +283,7 @@ module.exports = {
         service.submitProof(c, {
           clientId: clientId(req),
           email: emailOf(req),
+          name: nameOf(req),
           amount: b.amount,
           currency: b.currency || "XAF",
           method: b.method,
@@ -365,25 +405,26 @@ module.exports = {
     });
   }),
   chatMessages: asyncHandler(async (req, res) => {
-    res.json({
-      data: await req.tenantDb((c) =>
-        chat.messages(c, {
-          clientId: clientId(req), me: meOf(req), scope: scopeOf(req),
-          thread: threadOf(req.query.thread), before: beforeOf(req.query.before), lang: langOf(req),
-        })),
-    });
+    const data = await req.tenantDb((c) =>
+      chat.messages(c, {
+        clientId: clientId(req), me: meOf(req), scope: scopeOf(req),
+        thread: threadOf(req.query.thread), before: beforeOf(req.query.before), lang: langOf(req),
+      }));
+    // Colleagues share a thread, so each of their messages says who wrote it.
+    await nameAuthors(req, data.messages);
+    res.json({ data });
   }),
   chatSend: asyncHandler(async (req, res) => {
     const b = req.body;
-    res.status(201).json({
-      data: await req.tenantDb((c) =>
+    const sent = await req.tenantDb((c) =>
         chat.send(c, {
           clientId: clientId(req), me: meOf(req), scope: scopeOf(req),
           thread: b.thread || "general", body: b.body, milestoneId: b.milestone_instance_id || null,
           location: b.lat !== undefined ? { lat: b.lat, lng: b.lng, label: b.location_label || null } : null,
           file: req.file || null, meta: chatMeta(b), slug: slugOf(req), lang: langOf(req),
-        })),
-    });
+        }));
+    if (sent && sent.author && !sent.author.name) sent.author.name = nameOf(req);
+    res.status(201).json({ data: sent });
   }),
   chatRead: asyncHandler(async (req, res) => {
     res.json({
@@ -514,16 +555,21 @@ module.exports = {
   // The Client inbox (PR 3): every client conversation, waiting first.
   staffChatInbox: asyncHandler(async (req, res) => {
     const filter = ["all", "waiting", "mine"].includes(req.query.filter) ? req.query.filter : "all";
-    res.json({ data: await req.tenantDb((c) => chat.staffInbox(c, { filter, actor: staff(req) })) });
+    const data = await req.tenantDb((c) => chat.staffInbox(c, { filter, actor: staff(req) }));
+    // "Paul Atiock: is the container out?" — who at the client wrote last.
+    const authors = data.items.map((i) => i.last && i.last.author).filter(Boolean);
+    const lookup = await portalNames(req, authors.map((a) => ({ id: a.portal_user_id, email: a.email })));
+    for (const a of authors) a.name = lookup({ id: a.portal_user_id, email: a.email });
+    res.json({ data });
   }),
   staffChatThreads: asyncHandler(async (req, res) => {
     res.json({ data: await req.tenantDb((c) => chat.staffThreads(c, { clientId: uuidOf(req.query.client_id, "client_id") })) });
   }),
   staffChatMessages: asyncHandler(async (req, res) => {
-    res.json({
-      data: await req.tenantDb((c) =>
-        chat.staffMessages(c, { clientId: uuidOf(req.query.client_id, "client_id"), thread: threadOf(req.query.thread), before: beforeOf(req.query.before) })),
-    });
+    const data = await req.tenantDb((c) =>
+      chat.staffMessages(c, { clientId: uuidOf(req.query.client_id, "client_id"), thread: threadOf(req.query.thread), before: beforeOf(req.query.before) }));
+    await nameAuthors(req, data.messages);
+    res.json({ data });
   }),
   staffChatSend: asyncHandler(async (req, res) => {
     const b = req.body;
@@ -554,10 +600,11 @@ module.exports = {
     res.json({ data: await req.tenantDb((c) => bundles.withdraw(c, { invoiceId: req.params.invoiceId, actor: staff(req) })) });
   }),
   staffRequests: asyncHandler(async (req, res) => {
-    res.json({
-      data: await req.tenantDb((c) =>
-        service.staffRequests(c, { clientId: req.query.client_id || null, status: req.query.status || null })),
-    });
+    const rows = await req.tenantDb((c) =>
+      service.staffRequests(c, { clientId: req.query.client_id || null, status: req.query.status || null }));
+    // Who at the client sent the file or the answer.
+    const lookup = await portalNames(req, rows.map((r) => ({ email: r.answered_by_email })));
+    res.json({ data: rows.map((r) => ({ ...r, answered_by_name: lookup({ email: r.answered_by_email }) })) });
   }),
   staffCreateRequest: asyncHandler(async (req, res) => {
     const b = req.body;
@@ -585,10 +632,11 @@ module.exports = {
     sendFile(res, await req.tenantDb((c) => service.staffRequestFile(c, { requestId: req.params.id })));
   }),
   staffProofs: asyncHandler(async (req, res) => {
-    res.json({
-      data: await req.tenantDb((c) =>
-        service.staffProofs(c, { status: req.query.status || null, clientId: req.query.client_id || null })),
-    });
+    const rows = await req.tenantDb((c) =>
+      service.staffProofs(c, { status: req.query.status || null, clientId: req.query.client_id || null }));
+    // Who at the client says they paid.
+    const lookup = await portalNames(req, rows.map((p) => ({ email: p.submitted_by_email })));
+    res.json({ data: rows.map((p) => ({ ...p, submitted_by_name: lookup({ email: p.submitted_by_email }) })) });
   }),
   staffConfirmProof: asyncHandler(async (req, res) => {
     res.json({
@@ -620,6 +668,9 @@ module.exports = {
         clientId: cid, email: b.email, accessScope: b.access_scope, isClientAdmin: b.is_client_admin,
         expiresAt: b.expires_at || null, actor: staff(req),
       }));
+    // The login is made now even when the email waits, so the name typed here
+    // is kept — otherwise "Give access" without an email would drop it.
+    if (b.send_invite === false) await req.identityDb((c) => authService.ensureUser(c, { email: grant.email, fullName: b.full_name }));
     const invite = b.send_invite === false ? { sent: false, emailed: false } : await sendInvite(req, { email: grant.email, fullName: b.full_name });
     const [person] = await peopleWithLogins(req, [grant]);
     res.status(201).json({ data: { ...person, invite } });
@@ -633,6 +684,15 @@ module.exports = {
         expiresAt: Object.prototype.hasOwnProperty.call(b, "expires_at") ? b.expires_at || null : undefined,
         actor: staff(req),
       }));
+    // The name is the login's, not the grant's: one person, one name, however
+    // many clients they sign in for. A person given access without an invite
+    // has no login yet, so naming them makes one (it signs nobody in).
+    if (b.full_name) {
+      await req.identityDb(async (c) => {
+        const { user } = await authService.ensureUser(c, { email: row.email, fullName: b.full_name });
+        await authService.setFullName(c, { portalUserId: user.portal_user_id, fullName: b.full_name });
+      });
+    }
     const [person] = await peopleWithLogins(req, [row]);
     res.json({ data: person });
   }),

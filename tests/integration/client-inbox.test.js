@@ -141,7 +141,9 @@ d("Client inbox and account manager (real Postgres)", () => {
       });
       const link = `/comms/clients?client=${cl.Acme}&thread=general`;
       const [toManager] = await notificationsFor("am", link);
-      expect(toManager).toMatchObject({ category: "comms", body: "Can you quote Douala to Bangui?", link_url: link });
+      // The ping says which colleague at the client wrote; a login with no
+      // name yet is named by its address.
+      expect(toManager).toMatchObject({ category: "comms", body: `buyer@${tag}.test: Can you quote Douala to Bangui?`, link_url: link });
       expect(await notificationsFor("md", link)).toHaveLength(1);
       // The client has a manager: the inbox holders are not woken for it.
       expect(await notificationsFor("ops", link)).toHaveLength(0);

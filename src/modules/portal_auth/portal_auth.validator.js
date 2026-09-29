@@ -57,6 +57,10 @@ const optInt = (min, max) =>
     z.number().int().min(min).max(max).optional(),
   );
 /** A chat thread: "general", or the id of a shipment. */
+// A portal person's name. Required wherever a login is created or granted: the
+// team has to know WHO at a client wrote to them or sent a file, and an email
+// address is not a person. 120 is the column the staff list and email greet from.
+const personName = z.string().trim().min(1, "Enter their name").max(120);
 const chatThread = z.preprocess(blankToUndefined, z.union([z.literal("general"), z.string().uuid()]).optional());
 /**
  * What a chat message may carry besides its file (14170). The text is
@@ -157,13 +161,15 @@ const schemas = {
     challengeToken,
     label: z.string().max(80).optional().nullable(),
   }),
-  create: z.object({ email: z.string().email(), password: z.string().min(8), full_name: z.string().optional() }),
+  create: z.object({ email: z.string().email(), password: z.string().min(8), full_name: personName }),
   password: z.object({ password: z.string().min(8) }),
   status: z.object({ status: z.enum(["ACTIVE", "DISABLED"]) }),
   // Invite takes no password: staff must not choose an external party's
-  // credentials. `full_name` is optional because a grant is issued against an
-  // email address and the name may not be known yet.
-  invite: z.object({ email: z.string().email(), full_name: z.string().optional() }),
+  // credentials. It doubles as Resend, so `full_name` may be left out for a
+  // login that already exists — the service refuses to CREATE one without it
+  // (NAME_REQUIRED): the grant is keyed by email, but the people who read a
+  // client's messages need to know who is writing.
+  invite: z.object({ email: z.string().email(), full_name: personName.optional() }),
   forgot: z.object({ email: z.string().email() }),
   accept: z.object({ token: z.string().min(1), password: z.string().min(8), trust_device: trust }),
   // Q tickets raised from the portal. Reuses the module's own shapes so the
@@ -212,6 +218,8 @@ const schemas = {
   requestUpload: z.object({}),
   // A bodyless action (remove a colleague): nothing the caller sends is read.
   empty: z.object({}),
+  // The person's own name, from their portal profile.
+  profile: z.object({ full_name: personName }).strict(),
   requestAnswer: z.object({ text: z.string().trim().min(1).max(4000) }),
   shareDocument: z.object({ doc_type_code: optText(60), dossier_id: optUuid, note: optText(1000) }),
   paymentProof: z.object({
@@ -227,7 +235,7 @@ const schemas = {
   }),
   teamInvite: z.object({
     email: z.string().trim().email(),
-    full_name: optText(120),
+    full_name: personName,
     access_scope: z.enum(SCOPES).optional(),
     is_client_admin: flag.optional(),
   }),
@@ -251,13 +259,14 @@ const schemas = {
   // the LAST DAY they may sign in, so it is stored as the end of that day.
   staffPersonAdd: z.object({
     email: z.string().trim().email().max(254),
-    full_name: z.string().trim().max(120).optional().nullable(),
+    full_name: personName,
     access_scope: z.enum(SCOPES).optional(),
     is_client_admin: z.boolean().optional().nullable(),
     expires_at: accessUntil.optional().nullable(),
     send_invite: z.boolean().optional(),
   }).strict(),
   staffPersonUpdate: z.object({
+    full_name: personName.optional(),
     access_scope: z.enum(SCOPES).optional(),
     is_client_admin: z.boolean().optional(),
     expires_at: accessUntil.nullable().optional(),
@@ -378,7 +387,7 @@ module.exports = {
   staffCreateRequest: mw("staffCreateRequest"), staffReviewRequest: mw("staffReviewRequest"),
   staffConfirmProof: mw("staffConfirmProof"), staffRejectProof: mw("staffRejectProof"),
   staffPublishBundle: mw("staffPublishBundle"),
-  staffPersonAdd: mw("staffPersonAdd"), staffPersonUpdate: mw("staffPersonUpdate"),
+  staffPersonAdd: mw("staffPersonAdd"), staffPersonUpdate: mw("staffPersonUpdate"), profile: mw("profile"),
   inviteDefaults: mw("inviteDefaults"), onboardingStepCreate: mw("onboardingStepCreate"),
   onboardingStepUpdate: mw("onboardingStepUpdate"), onboardingStepMove: mw("onboardingStepMove"),
   chatSend: mw("chatSend"), chatRead: mw("chatRead"), staffChatSend: mw("staffChatSend"), staffChatRead: mw("staffChatRead"),

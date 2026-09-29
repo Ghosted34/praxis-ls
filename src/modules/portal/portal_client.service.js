@@ -353,7 +353,10 @@ async function concreteType(c, clientId, request) {
   return file && /AIR/i.test(file.service_key || "") ? "MAWB" : "BL";
 }
 
-async function uploadForRequest(c, { clientId, requestId, file, email, slug }) {
+/** Who at the client did it, for the team's notification: `{ name, email }`. */
+const byOf = (email, name) => ({ name: name || null, email: email || null });
+
+async function uploadForRequest(c, { clientId, requestId, file, email, name = null, slug }) {
   const request = await repo.clientRequest(c, clientId, requestId);
   if (!request) throw notFound("That request");
   if (!["OPEN", "REJECTED", "SUBMITTED"].includes(request.status)) {
@@ -371,12 +374,12 @@ async function uploadForRequest(c, { clientId, requestId, file, email, slug }) {
     eventTypeKey: "client_request.submitted",
     moduleKey: MODULE_OPS,
     entityRef: `client_request:${requestId}`,
-    payload: { client_id: clientId, dossier_id: request.dossier_id, doc_type_code: code, kind: "DOCUMENT" },
+    payload: { client_id: clientId, dossier_id: request.dossier_id, doc_type_code: code, kind: "DOCUMENT", by: byOf(email, name) },
   });
   return requestView(await repo.clientRequest(c, clientId, requestId));
 }
 
-async function answerRequest(c, { clientId, requestId, text, email }) {
+async function answerRequest(c, { clientId, requestId, text, email, name = null }) {
   const request = await repo.clientRequest(c, clientId, requestId);
   if (!request) throw notFound("That request");
   if (!["OPEN", "REJECTED", "SUBMITTED"].includes(request.status)) {
@@ -387,13 +390,13 @@ async function answerRequest(c, { clientId, requestId, text, email }) {
     eventTypeKey: "client_request.submitted",
     moduleKey: MODULE_OPS,
     entityRef: `client_request:${requestId}`,
-    payload: { client_id: clientId, dossier_id: request.dossier_id, kind: "INFO" },
+    payload: { client_id: clientId, dossier_id: request.dossier_id, kind: "INFO", by: byOf(email, name) },
   });
   return requestView(await repo.clientRequest(c, clientId, requestId));
 }
 
 /** "Share a document" — something nobody asked for, reviewed like everything else. */
-async function shareDocument(c, { clientId, dossierId = null, docTypeCode = null, note = null, file, email, slug }) {
+async function shareDocument(c, { clientId, dossierId = null, docTypeCode = null, note = null, file, email, name = null, slug }) {
   if (dossierId && !(await repo.ownsDossier(c, clientId, dossierId))) throw notFound("That shipment");
   if (docTypeCode && !(await repo.documentType(c, docTypeCode))) {
     throw new AppError("BAD_DOC_TYPE", "Choose one of the listed document types", 422);
@@ -408,7 +411,7 @@ async function shareDocument(c, { clientId, dossierId = null, docTypeCode = null
     eventTypeKey: "client_request.submitted",
     moduleKey: MODULE_OPS,
     entityRef: `client_request:${row.client_request_id}`,
-    payload: { client_id: clientId, dossier_id: dossierId, doc_type_code: docTypeCode, kind: "DOCUMENT", unsolicited: true },
+    payload: { client_id: clientId, dossier_id: dossierId, doc_type_code: docTypeCode, kind: "DOCUMENT", unsolicited: true, by: byOf(email, name) },
   });
   return requestView(await repo.clientRequest(c, clientId, row.client_request_id));
 }
@@ -537,7 +540,7 @@ function proofView(p) {
  * the money arrived — that is the whole reason this is a claim for finance to
  * confirm rather than a receipt.
  */
-async function submitProof(c, { clientId, email, amount, currency, method, provider, paidOn, reference, note, dossierId, allocations = [], file, slug }) {
+async function submitProof(c, { clientId, email, name = null, amount, currency, method, provider, paidOn, reference, note, dossierId, allocations = [], file, slug }) {
   if (!file) throw new AppError("FILE_REQUIRED", "Add a photo or PDF of your receipt", 422);
   if (!METHODS.includes(method)) throw new AppError("BAD_METHOD", "Choose how you paid", 422);
   const total = round2(amount);
@@ -585,7 +588,7 @@ async function submitProof(c, { clientId, email, amount, currency, method, provi
     moduleKey: MODULE_FINANCE,
     entityRef: `payment_proof:${row.payment_proof_id}`,
     priority: "HIGH",
-    payload: { client_id: clientId, amount: total, currency, invoices: allocs.length },
+    payload: { client_id: clientId, amount: total, currency, invoices: allocs.length, by: byOf(email, name) },
   });
   return proofView(await repo.proofById(c, row.payment_proof_id));
 }
@@ -644,7 +647,11 @@ async function removeTeamMember(c, { clientId, grantId, selfGrantId }) {
 /* ── staff: requests to clients ────────────────────────────────────────── */
 
 const staffRequests = async (c, { clientId = null, status = null }) =>
-  (await repo.staffRequests(c, { clientId, status })).map((r) => ({ ...requestView(r), client_id: r.client_id, client_name: r.client_name }));
+  (await repo.staffRequests(c, { clientId, status })).map((r) => ({
+    ...requestView(r), client_id: r.client_id, client_name: r.client_name,
+    // Who at the client sent it — the controller adds their name.
+    answered_by_email: r.answered_by_email || null,
+  }));
 
 /** Staff ask a client for a document or a piece of information. */
 async function createRequest(c, { clientId, dossierId = null, kind, docTypeCode = null, title = null, note = null, dueOn = null, actor = {} }) {

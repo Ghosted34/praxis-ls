@@ -206,9 +206,10 @@ describe("voice notes", () => {
 describe("telling the team", () => {
   it("alerts the account manager, the file's owners and the MD about a shipment's thread", async () => {
     mockManager = ["am-1"];
-    await chat.send(client, { clientId: "c1", me: ME, scope: "ALL", thread: SHIP.dossier_id, body: "Hello" });
+    await chat.send(client, { clientId: "c1", me: { ...ME, full_name: "Marie Nguema" }, scope: "ALL", thread: SHIP.dossier_id, body: "Hello" });
     expect(mockNotified.map((n) => n.userId).sort()).toEqual(["am-1", "md-1", "ops-1", "sales-1"]);
-    expect(mockNotified[0]).toMatchObject({ category: "comms", title: "Acme Trading · PRX-1", body: "Hello" });
+    // Which colleague at the client wrote — not only which company.
+    expect(mockNotified[0]).toMatchObject({ category: "comms", title: "Acme Trading · PRX-1", body: "Marie Nguema: Hello" });
     // One claim per person per thread: five quick lines are one ping.
     expect(mockNotified[0].dedupeKey).toBe(`chat:c1:${SHIP.dossier_id}:${mockNotified[0].userId}`);
     // The link opens the conversation itself, in the Client inbox.
@@ -228,7 +229,8 @@ describe("telling the team", () => {
   it("alerts the Client inbox when nobody looks after the client or owns the thread", async () => {
     await chat.send(client, { clientId: "c1", me: ME, scope: "ALL", thread: "general", location: { lat: 1, lng: 2 } });
     expect(mockNotified.map((n) => n.userId).sort()).toEqual(["md-1", "support-1"]);
-    expect(mockNotified[0].body).toBe("Shared a location");
+    // A login with no name yet is named by its address.
+    expect(mockNotified[0].body).toBe("marie@acme.cm: Shared a location");
     // The inbox's own permission — not MOD-67, the administrators'.
     expect(mockHolderAsks).toEqual([["MOD-64C", "edit"]]);
   });

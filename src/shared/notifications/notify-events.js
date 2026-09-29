@@ -165,6 +165,20 @@ function fmtAmount(x) {
 }
 
 /**
+ * "From Paul Atiock (paul@goum.cm)." — the person at a client who did it, when
+ * the event came from the client portal. The team must know WHO at the client
+ * sent a file or declined an offer, not only which company; the email stays
+ * beside the name because two people at one client can share a name.
+ */
+function byLine(by) {
+  if (!by || typeof by !== "object") return null;
+  const name = by.name ? String(by.name).trim() : "";
+  const email = by.email ? String(by.email).trim() : "";
+  if (!name && !email) return null;
+  return `From ${name && email ? `${name} (${email})` : name || email}.`;
+}
+
+/**
  * Raise notifications for one emitted event, if it's on the allowlist. Notifies
  * the module's permission-holders (excluding the actor). Returns the count sent.
  */
@@ -177,7 +191,8 @@ async function onEvent(client, { eventTypeKey, moduleKey, entityRef = null, acto
     const recipients = await repo.recipientsWithPermission(client, moduleKey, cfg.action);
     const amt = fmtAmount(payload && (payload.amount_xaf ?? payload.amount ?? payload.total_ttc));
     const ent = shortEntity(entityRef);
-    const body = `${cfg.title}${ent ? ` — ${cap(ent)}` : ""}${amt ? ` (${amt})` : ""}.`;
+    const who = byLine(payload && payload.by);
+    const body = `${cfg.title}${ent ? ` — ${cap(ent)}` : ""}${amt ? ` (${amt})` : ""}.${who ? ` ${who}` : ""}`;
     const category = categoryFor(eventTypeKey);
     // PERF S5: one batched call instead of a loop of ~5 queries per recipient.
     // The actor is excluded here rather than inside notifyMany — "do not tell
@@ -200,4 +215,4 @@ async function onEvent(client, { eventTypeKey, moduleKey, entityRef = null, acto
   }
 }
 
-module.exports = { onEvent, NOTIFIABLE };
+module.exports = { onEvent, NOTIFIABLE, byLine };

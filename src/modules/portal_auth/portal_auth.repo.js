@@ -32,6 +32,22 @@ async function setStatus(client, id, status) {
   );
   return rows[0] || null;
 }
+/** Staff correcting a name, or the person correcting their own. */
+async function setFullName(client, id, fullName) {
+  const { rows } = await client.query(
+    `UPDATE portal_user SET full_name=$2 WHERE portal_user_id=$1 RETURNING ${SAFE}`,
+    [id, fullName],
+  );
+  return rows[0] || null;
+}
+/** A name given at invite, kept only where the login has none yet — a name the
+ *  person set for themselves is never overwritten by a colleague's typing. */
+async function fillMissingName(client, id, fullName) {
+  await client.query(
+    "UPDATE portal_user SET full_name=$2 WHERE portal_user_id=$1 AND COALESCE(btrim(full_name), '') = ''",
+    [id, fullName],
+  );
+}
 async function touchLogin(client, id) {
   await client.query("UPDATE portal_user SET last_login_at=now(), failed_logins=0 WHERE portal_user_id=$1", [id]);
 }
@@ -49,6 +65,18 @@ async function usersByEmails(client, emails) {
     `SELECT portal_user_id, email::text AS email, full_name, status, last_login_at
        FROM portal_user WHERE lower(email::text) = ANY($1::text[])`,
     [emails.map((e) => String(e).toLowerCase())],
+  );
+  return rows;
+}
+/** Who wrote a message or sent a file, for the staff side: names by login id
+ *  and by email, since older rows carry only the email. */
+async function namesFor(client, { ids = [], emails = [] }) {
+  if (!ids.length && !emails.length) return [];
+  const { rows } = await client.query(
+    `SELECT portal_user_id, email::text AS email, full_name
+       FROM portal_user
+      WHERE portal_user_id = ANY($1::uuid[]) OR lower(email::text) = ANY($2::text[])`,
+    [ids, emails.map((e) => String(e).toLowerCase())],
   );
   return rows;
 }
@@ -313,7 +341,8 @@ async function deletePasskey(client, credentialId, portalUserId) {
 }
 
 module.exports = {
-  findByEmail, findById, insert, setPassword, setStatus, touchLogin, bumpFailed, list, usersByEmails,
+  findByEmail, findById, insert, setPassword, setStatus, setFullName, fillMissingName, touchLogin, bumpFailed, list,
+  usersByEmails, namesFor,
   createInvite, invalidateInvites, findInviteByHash, markInviteUsed, inviteStatus, latestInvites,
   insertSession, findSessionByRefresh, rotateSession, touchSession, revokeSession,
   revokeSessionByHash, revokeAllSessions, sessionIsLive, listSessions,

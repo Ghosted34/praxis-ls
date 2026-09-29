@@ -368,6 +368,33 @@ const listUsers = (client) => repo.list(client);
 const usersByEmails = (client, emails) => (emails.length ? repo.usersByEmails(client, emails) : []);
 const getById = (client, id) => repo.findById(client, id);
 
+/**
+ * A person's name, set by staff (Client 360 → Portal → Edit) or by the person
+ * themselves. Required, never blanked: the team has to know who at a client is
+ * writing to them, not just from which address.
+ */
+async function setFullName(client, { portalUserId, fullName }) {
+  const name = String(fullName || "").trim();
+  if (!name) throw new AppError("NAME_REQUIRED", "Enter their name", 422);
+  const row = await repo.setFullName(client, portalUserId, name.slice(0, 120));
+  if (!row) throw new AppError("NOT_FOUND", "That person has no sign-in yet", 404);
+  return row;
+}
+
+/** Names for the staff side, keyed both ways: `byId` and `byEmail` (lowercased). */
+async function namesFor(client, { ids = [], emails = [] }) {
+  const uniq = (xs) => [...new Set(xs.filter(Boolean).map(String))];
+  const rows = await repo.namesFor(client, { ids: uniq(ids), emails: uniq(emails).map((e) => e.toLowerCase()) });
+  const byId = new Map();
+  const byEmail = new Map();
+  for (const r of rows) {
+    const name = r.full_name && String(r.full_name).trim() ? String(r.full_name).trim() : null;
+    byId.set(r.portal_user_id, name);
+    byEmail.set(String(r.email).toLowerCase(), name);
+  }
+  return { byId, byEmail };
+}
+
 // ── Invitations + recovery (0482) ───────────────────────────────────────────
 
 function inviteEmailHtml({ name, link, tenantName, isReset }) {
@@ -445,17 +472,34 @@ async function issueLink(client, { user, purpose, ip }) {
  * — resend" rather than implying success. A mail failure must not lose the login
  * or the token; both stay valid for a resend.
  */
-async function inviteUser(client, { email, fullName, ip, origin, tenantName = "your logistics provider" }) {
+/**
+ * Find the login for an email, or create it — with an unusable password, so it
+ * signs nobody in until the person sets their own from a link. A new login
+ * must carry a name: the team has to know who at a client is writing to them.
+ * An existing login with no name (one that predates that rule) takes the one
+ * given; a name it already has is never overwritten from here.
+ */
+async function ensureUser(client, { email, fullName }) {
   const normalized = String(email || "").trim().toLowerCase();
   if (!normalized) throw new AppError("EMAIL_REQUIRED", "email is required", 422);
-
-  let user = await repo.findByEmail(client, normalized);
-  let created = false;
+  const name = String(fullName || "").trim().slice(0, 120);
+  const user = await repo.findByEmail(client, normalized);
   if (!user) {
+    if (!name) throw new AppError("NAME_REQUIRED", "Enter their name", 422);
     const unusable = await argon2.hash(crypto.randomBytes(32).toString("hex"), { type: argon2.argon2id });
-    user = await repo.insert(client, { email: normalized, passwordHash: unusable, fullName });
-    created = true;
-  } else if (user.status !== "ACTIVE") {
+    return { user: await repo.insert(client, { email: normalized, passwordHash: unusable, fullName: name }), created: true };
+  }
+  if (name && !(user.full_name && String(user.full_name).trim())) {
+    await repo.fillMissingName(client, user.portal_user_id, name);
+    user.full_name = name;
+  }
+  return { user, created: false };
+}
+
+async function inviteUser(client, { email, fullName, ip, origin, tenantName = "your logistics provider" }) {
+  const { user, created } = await ensureUser(client, { email, fullName });
+  const normalized = String(user.email).toLowerCase();
+  if (!created && user.status !== "ACTIVE") {
     // Re-inviting a disabled login reactivates it — otherwise the invite lands
     // and the sign-in silently fails with the generic credentials error.
     await repo.setStatus(client, user.portal_user_id, "ACTIVE");
@@ -465,7 +509,7 @@ async function inviteUser(client, { email, fullName, ip, origin, tenantName = "y
 
   let emailed = true;
   try {
-    await sendInviteEmail(client, { to: normalized, name: fullName || user.full_name, token, origin, purpose: "INVITE", tenantName });
+    await sendInviteEmail(client, { to: normalized, name: user.full_name || fullName, token, origin, purpose: "INVITE", tenantName });
   } catch (err) {
     emailed = false;
     logger.error({ err, email: normalized }, "[portal] invite email failed to send");
@@ -531,7 +575,7 @@ const inviteStatus = (client, portalUserId) => repo.inviteStatus(client, portalU
 const latestInvites = (client, portalUserIds) => repo.latestInvites(client, portalUserIds);
 
 module.exports = {
-  login, verifyToken, createUser, setPassword, setStatus, listUsers, usersByEmails, getById,
+  login, verifyToken, createUser, setPassword, setStatus, listUsers, usersByEmails, getById, setFullName, namesFor, ensureUser,
   inviteUser, requestReset, acceptInvite, inviteStatus, latestInvites,
   issueTokens, refresh, logout, listSessions, sessionIsLive, revokeSession, requestCode, verifyCode,
   TRUSTED_SESSION_DAYS,

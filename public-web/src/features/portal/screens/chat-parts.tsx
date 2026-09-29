@@ -292,7 +292,9 @@ export function Bubble({
   local?: string | null;
 }) {
   const { t } = useTranslation();
-  const who = m.direction === "STAFF" ? m.author.name || t("portal.chat.team") : !m.mine ? m.author.email : null;
+  // A colleague's message is signed with their name — several people at one
+  // company share this conversation.
+  const who = m.direction === "STAFF" ? m.author.name || t("portal.chat.team") : !m.mine ? m.author.name || m.author.email : null;
   const media = m.attachments.some((a) => a.kind === "IMAGE") || !!m.location;
   return (
     <li className={cn("flex items-end gap-2", m.mine ? "justify-end" : "justify-start")}>

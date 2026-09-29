@@ -32,6 +32,7 @@ import { Callout } from "@/components/ui/callout";
 import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import { useConfirm } from "@/components/ui/use-confirm";
+import { usePrompt } from "@/components/ui/use-prompt";
 import { useToast } from "@/components/ui/toast";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { RowActions } from "@/components/ui/row-actions";
@@ -73,6 +74,7 @@ function GrantModal({
 }) {
   const [portal, setPortal] = React.useState<ExternalPortal>("AUDITOR");
   const [email, setEmail] = React.useState("");
+  const [name, setName] = React.useState("");
   const [expiresAt, setExpiresAt] = React.useState("");
   const [invite, setInvite] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
@@ -83,6 +85,7 @@ function GrantModal({
     if (!open) return;
     setPortal("AUDITOR");
     setEmail("");
+    setName("");
     setExpiresAt("");
     setInvite(true);
     setError(null);
@@ -112,7 +115,7 @@ function GrantModal({
         try {
           const r = await tenant<{ emailed: boolean }>("/portal/users/invite", {
             method: "POST",
-            body: { email: email.trim() },
+            body: { email: email.trim(), full_name: name.trim() },
           });
           if (!r.emailed)
             problem = tr("Access granted, but the invitation email could not be sent. Use Resend on the row.");
@@ -142,7 +145,12 @@ function GrantModal({
           <Button variant="outline" onClick={onClose} disabled={busy} className="w-full sm:w-auto">
             {notice ? tr("Close") : tr("Cancel")}
           </Button>
-          <Button onClick={() => void submit()} loading={busy} disabled={!email.trim() || busy} className="w-full sm:w-auto">
+          <Button
+            onClick={() => void submit()}
+            loading={busy}
+            disabled={!email.trim() || (invite && !name.trim()) || busy}
+            className="w-full sm:w-auto"
+          >
             {tr("Grant access")}
           </Button>
         </div>
@@ -173,6 +181,9 @@ function GrantModal({
             onChange={(e) => setEmail(e.target.value)}
             placeholder="cfo@acme.cm"
           />
+        </Field>
+        <Field label={tr("Name")} required={invite} hint={tr("Greets them in the email and the portal.")}>
+          <Input value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" maxLength={120} />
         </Field>
         <Field label={tr("Last day of access")} hint={tr("Optional — recommended for auditors.")}>
           <DateField value={expiresAt} onChange={setExpiresAt} min={todayISO()} />
@@ -264,6 +275,7 @@ export function PortalAccessPage() {
   const toast = useToast();
   const compact = useIsCompact();
   const [confirm, confirmDialog] = useConfirm();
+  const [prompt, promptDialog] = usePrompt();
   const { rows, error } = useList("/portals/access");
   const { rows: clients } = useList("/clients");
   // Logins, so a grant can say whether the person can actually sign in. Matched
@@ -318,11 +330,23 @@ export function PortalAccessPage() {
 
   /** Create-or-find the login and (re)send the set-password link. */
   async function invite(email: string) {
+    // A new sign-in needs a name; a resend to an existing one does not.
+    let fullName: string | null = null;
+    if (!loginByEmail.get(email.toLowerCase())) {
+      fullName = await prompt({
+        title: tv("Who is {{email}}?", { email }),
+        label: tr("Name"),
+        hint: tr("Greets them in the email and the portal."),
+        validate: (v) => (v.trim() ? null : tr("Enter their name.")),
+        confirmLabel: tr("Send invitation"),
+      });
+      if (fullName === null) return;
+    }
     setRowBusy(email);
     try {
       const r = await tenant<{ emailed: boolean; created: boolean }>("/portal/users/invite", {
         method: "POST",
-        body: { email },
+        body: fullName ? { email, full_name: fullName } : { email },
       });
       if (r.emailed) toast.success(tv("Invitation sent to {{email}}.", { email }));
       else toast.error(tv("Login ready for {{email}}, but the email could not be sent — check the mail settings and resend.", { email }));
@@ -561,6 +585,7 @@ export function PortalAccessPage() {
         onClose={() => setPreview(null)}
       />
       {confirmDialog}
+      {promptDialog}
     </section>
   );
 }

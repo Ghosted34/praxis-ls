@@ -323,11 +323,11 @@ async function completeSigning(c, { clientId, proposalId, me, code, presetCode, 
     throw new AppError("SIGNING_INCOMPLETE", "The signature could not be completed", 409);
   }
 
-  await proposalService.accept(c, { id: proposalId, actor: {} });
+  await proposalService.accept(c, { id: proposalId, actor: {}, by: { name: me.full_name || null, email: me.email || null } });
   await audit(c, {
     actorUserId: null, action: "proposal.accepted_in_portal", moduleKey: proposalEvents.MODULE,
     entityRef: entityRef(proposalId),
-    after: { by: me.email, signed: true, verify_code: signed.verify_code || null },
+    after: { by: me.email, by_name: me.full_name || null, signed: true, verify_code: signed.verify_code || null },
     ip,
   });
   return { accepted: true, signature: await signatureOf(c, proposalId) };
@@ -340,10 +340,10 @@ async function accept(c, { clientId, proposalId, me, ip = null, lang = "en" }) {
   if ((await digitalCards(c, langOf(lang))).length) {
     throw new AppError("SIGNATURE_REQUIRED", "This proposal is accepted by signing it", 409);
   }
-  await proposalService.accept(c, { id: proposalId, actor: {} });
+  await proposalService.accept(c, { id: proposalId, actor: {}, by: { name: me.full_name || null, email: me.email || null } });
   await audit(c, {
     actorUserId: null, action: "proposal.accepted_in_portal", moduleKey: proposalEvents.MODULE,
-    entityRef: entityRef(proposalId), after: { by: me.email, signed: false }, ip,
+    entityRef: entityRef(proposalId), after: { by: me.email, by_name: me.full_name || null, signed: false }, ip,
   });
   return { accepted: true, signature: null };
 }
@@ -369,12 +369,16 @@ async function decline(c, { clientId, proposalId, me, reasonCode, note = null, l
   const reason = `${langOf(lang) === "fr" ? chosen.label_fr : chosen.label_en}${note ? ` — ${String(note).slice(0, 400)}` : ""}`;
   await audit(c, {
     actorUserId: null, action: "proposal.declined_in_portal", moduleKey: proposalEvents.MODULE,
-    entityRef: entityRef(proposalId), after: { by: me.email, reason_code: reasonCode, reason },
+    entityRef: entityRef(proposalId), after: { by: me.email, by_name: me.full_name || null, reason_code: reasonCode, reason },
   });
   // Sales hears it with the reason, not just that the status changed.
   await emitEvent(c, {
     eventTypeKey: "proposal.declined_by_client", moduleKey: proposalEvents.MODULE, entityRef: entityRef(proposalId),
-    actorUserId: null, payload: { client_id: clientId, doc_number: row.doc_number, reason_code: reasonCode, reason },
+    actorUserId: null,
+    payload: {
+      client_id: clientId, doc_number: row.doc_number, reason_code: reasonCode, reason,
+      by: { name: me.full_name || null, email: me.email || null },
+    },
   });
   return { declined: true };
 }

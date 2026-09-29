@@ -100,6 +100,9 @@ router.post("/auth/sessions/:id/revoke", portalAuth(), c.revokeSession);
 
 // Portal user (external, token-scoped)
 router.get("/me", portalAuth(), c.me);
+// The person's own name — the one their colleagues and the team see on every
+// message and file they send. Self-service: their own login, never another's.
+router.post("/me/profile", portalAuth(), v.profile, c.saveProfile);
 router.get("/client", portalAuth("CLIENT"), c.client);
 /*
  * The client team's access scope (14150) is checked per AREA: OPS routes carry

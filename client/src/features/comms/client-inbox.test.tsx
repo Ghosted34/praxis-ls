@@ -42,7 +42,10 @@ const ITEMS = [
   {
     client_id: "c2", client_name: "Bois du Sud", thread: "general", dossier_id: null, dossier_ref: null,
     unread: 1, waiting_since: "2026-09-26T08:00:00Z",
-    last: { direction: "CLIENT", preview: null, kind: "LOCATION", at: "2026-09-26T08:00:00Z" },
+    last: {
+      direction: "CLIENT", preview: null, kind: "LOCATION", at: "2026-09-26T08:00:00Z",
+      author: { name: "Jean Mballa", email: "jean@boisdusud.cm" },
+    },
     manager: null, mine: false,
   },
 ];
@@ -77,8 +80,10 @@ describe("the Client inbox", () => {
     expect(inboxReads()).toEqual(["/portal/chat/inbox?filter=waiting"]);
 
     // Whose line it was, then the line — or what was sent when it had no words.
+    // A named colleague at the client is named; an older login without a name
+    // still reads "Client".
     expect(screen.getByText("Client · Is it out of port?")).toBeInTheDocument();
-    expect(screen.getByText("Client · Location")).toBeInTheDocument();
+    expect(screen.getByText("Jean Mballa · Location")).toBeInTheDocument();
     expect(screen.getByText("PRX-1")).toBeInTheDocument();
     // Who looks after each client, and who nobody does.
     expect(screen.getByText("Awa Ndiaye")).toBeInTheDocument();

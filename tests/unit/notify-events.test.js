@@ -116,3 +116,22 @@ test("is best-effort: a producer failure is swallowed", async () => {
     }),
   ).resolves.toBe(0);
 });
+
+test("a client-portal event names the person at the client who did it", async () => {
+  repo.recipientsWithPermission.mockResolvedValue(["ops1"]);
+  await ne.onEvent(client, {
+    eventTypeKey: "client_request.submitted",
+    moduleKey: "MOD-29",
+    entityRef: "client_request:abc",
+    payload: { kind: "DOCUMENT", by: { name: "Paul Atiock", email: "paul@goum.cm" } },
+  });
+  const [, , msg] = service.notifyMany.mock.calls[0];
+  expect(msg.body).toMatch(/From Paul Atiock \(paul@goum\.cm\)\.$/);
+});
+
+test("the sender line falls back to the address, and is absent when nobody is named", () => {
+  expect(ne.byLine({ name: null, email: "paul@goum.cm" })).toBe("From paul@goum.cm.");
+  expect(ne.byLine({ name: "Paul Atiock", email: null })).toBe("From Paul Atiock.");
+  expect(ne.byLine(null)).toBeNull();
+  expect(ne.byLine({})).toBeNull();
+});

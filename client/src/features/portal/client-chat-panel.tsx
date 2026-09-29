@@ -50,7 +50,7 @@ type Message = {
   direction: "STAFF" | "CLIENT";
   body: string;
   created_at: string;
-  author: { name: string | null; email: string | null };
+  author: { name: string | null; email: string | null; portal_user_id?: string | null };
   seen: boolean | null;
   milestone: { milestone_instance_id: string; label: string | null } | null;
   location: { lat: number; lng: number; label: string | null } | null;
@@ -128,7 +128,10 @@ function ChatVoice({ att }: { att: Attachment }) {
 
 function Bubble({ m }: { m: Message }) {
   const ours = m.direction === "STAFF";
-  const who = ours ? m.author.name || tr("Team") : m.author.email || tr("Client");
+  // Which colleague at the client wrote it: their name, with the address under
+  // it — two people at one client can share a first name.
+  const who = ours ? m.author.name || tr("Team") : m.author.name || m.author.email || tr("Client");
+  const whoEmail = !ours && m.author.name && m.author.email ? m.author.email : null;
   return (
     <li className={cn("flex", ours ? "justify-end" : "justify-start")}>
       <div
@@ -137,7 +140,10 @@ function Bubble({ m }: { m: Message }) {
           ours ? "rounded-br-md bg-primary/10 text-foreground" : "rounded-bl-md bg-muted text-foreground",
         )}
       >
-        <p className="mb-0.5 text-xs font-semibold text-primary-ink">{who}</p>
+        <p className="mb-0.5 text-xs font-semibold text-primary-ink">
+          {who}
+          {whoEmail ? <span className="ml-1.5 font-normal text-muted-foreground">{whoEmail}</span> : null}
+        </p>
         {m.milestone?.label ? (
           <p className="mb-1">
             <Pill tone="blue">{m.milestone.label}</Pill>

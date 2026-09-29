@@ -30,8 +30,11 @@ export const recordSheetPath = (basePath: string, id: string) =>
  * `hidden lg:block` is the right tool when both branches are cheap markup and
  * the wrong one here: it would mount the record twice, put a live focus trap in
  * a phone's accessibility tree and give a screen reader two of every heading.
- * `lib/use-media-query.ts` opens with that reasoning. It answers TRUE before
- * `matchMedia` resolves, so the first frame is the desktop branch.
+ * `lib/use-media-query.ts` opens with that reasoning. It asks `matchMedia` on
+ * the first render — it has to, because the exchange effect below runs in the
+ * first commit, and a phone that reads as a desktop for that one commit is sent
+ * to the route, handed back to `?focus=` by `<Record360Page>`, and sent to the
+ * route again, forever (`record-360.test.tsx`).
  *
  * `?focus=<id>` means "open this record" wherever it came from — a drill-in from
  * another 360, a notification, the back arrow. On a phone that is the sheet,

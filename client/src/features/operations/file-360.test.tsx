@@ -20,8 +20,8 @@
  *
  * 4. THE PHONE GETS THE SHEET. `useIsDesktop` answers TRUE when `matchMedia` is
  *    absent, so the desktop branch is the default in jsdom and the mobile branch
- *    has to be asked for explicitly — which is also the production behaviour on
- *    the first frame.
+ *    has to be asked for explicitly, by stubbing `matchMedia` — which the hook
+ *    reads on its first render, exactly as a real phone's does.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";

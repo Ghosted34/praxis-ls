@@ -162,7 +162,8 @@ describe("RecordSheet — the history step", () => {
 describe("SplitPane below lg", () => {
   beforeEach(() => {
     // `useIsDesktop` answers true where matchMedia is missing, so the phone
-    // branch has to be asked for — as it is on a real phone's first frame.
+    // branch has to be asked for, by stubbing it — the hook reads it on the
+    // first render, as a real phone's does.
     vi.stubGlobal(
       "matchMedia",
       (query: string) =>

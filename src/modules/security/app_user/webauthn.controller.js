@@ -2,6 +2,7 @@
 
 const { asyncHandler } = require("../../../utils/errors");
 const service = require("./webauthn.service");
+const knownDevice = require("./known-device");
 
 /*
  * One body shape per route, declared in app_user.validator.js. These handlers
@@ -34,6 +35,9 @@ const registerVerify = asyncHandler(async (req, res) => {
       req,
     }),
   );
+  // The passkey now lives on THIS device: the server remembers that, so the
+  // sign-in screen leads with it even after the browser clears its storage.
+  await knownDevice.remember(req, res, { userId: req.user.user_id, credentialId: data && data.credential_id });
   res.json({ data });
 });
 
@@ -76,6 +80,7 @@ const loginVerify = asyncHandler(async (req, res) => {
       environment: req.env || "live",
     }),
   );
+  await knownDevice.remember(req, res, { userId: data.user.user_id, credentialId: data.credential_id });
   res.json({ data });
 });
 

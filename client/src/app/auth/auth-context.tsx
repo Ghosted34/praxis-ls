@@ -54,11 +54,11 @@ import {
 } from "@/lib/api-client";
 import { tokenStore } from "@/lib/token-store";
 import { sessionClock } from "@/lib/session-clock";
-import { pinStore } from "@/lib/pin-store";
 import { passkeyDeviceStore } from "@/lib/passkey-devices";
-import { deviceIdStore } from "@/lib/device-id";
 import { lastSessionStore } from "@/lib/last-session";
-import { passkeyAssertion } from "@/lib/webauthn";
+import { clearSessionKeepDevice } from "@/lib/device-keys";
+import { keepDeviceStorage } from "@/lib/device-memory";
+import { passkeyAssertion, signalPasskeyGone } from "@/lib/webauthn";
 import { queryClient } from "@/lib/query-client";
 import { onReconnect, probeNow, reportUnreachable } from "@/lib/connection";
 import { bindLanguageOwner } from "@/lib/i18n";
@@ -79,6 +79,8 @@ export type User = {
   ai_enabled?: boolean;
   /** Comms channels switched on for the tenant. Absent ⇒ off. */
   channels?: { comms?: boolean };
+  /** A Quick PIN is set — it signs this person in on ANY device (14230). */
+  has_quick_pin?: boolean;
 };
 
 export type LockReason = SessionEndReason | "manual";
@@ -96,12 +98,9 @@ type AuthState = {
   pendingToken: string | null;
   login: (email: string, password: string) => Promise<LoginResult>;
   verify2fa: (code: string) => Promise<void>;
-  pinLogin: (email: string, pin: string) => Promise<void>;
-  registerPin: (
-    pin: string,
-    label?: string | null,
-    currentPassword?: string | null,
-  ) => Promise<{ device_id: string }>;
+  /** Email + Quick PIN, from any device. `pending2fa` when the account's
+   *  authenticator app must follow — the PIN replaces the password, not the code. */
+  pinLogin: (email: string, pin: string) => Promise<LoginResult>;
   passkeyLogin: (email?: string) => Promise<void>;
   logout: () => Promise<void>;
   /** Lock the screen now and end the session server-side ("I'm stepping away"). */
@@ -115,16 +114,6 @@ type AuthState = {
 const USER_KEY = "praxis.user";
 /** Why the session locked, so every tab can say the same thing. */
 const LOCK_KEY = "praxis.session.locked";
-/**
- * Device facts that survive "Sign out" — every one of them is about THIS
- * machine, not the session. (`device-account.ts` is the one place that removes
- * them, when the account is taken off the device.)
- */
-const DEVICE_KEYS = [
-  "praxis.passkey.offer.declined",
-  "praxis.passkey.nudge.dismissed",
-];
-
 const AuthCtx = React.createContext<AuthState | null>(null);
 
 function persistUser(u: User | null) {
@@ -305,6 +294,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       tokenStore.setRefresh(r.refresh_token);
       sessionClock.set(r.session_expires_in);
       setPendingToken(null);
+      // Whoever signed in is the device's person now; "Not you?" is over.
+      lastSessionStore.someoneElse.end();
 
       if (wasLocked && lockedUser && lockedUser.user_id !== r.user.user_id) {
         persistUser(r.user);
@@ -477,60 +468,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const pinLogin: AuthState["pinLogin"] = React.useCallback(
     async (email, pin) => {
-      const dev = pinStore.get(email);
-      if (!dev)
-        throw new ApiError(
-          "NO_PIN_DEVICE",
-          "No Quick PIN is set up on this device for that email.",
-          400,
-        );
+      const who = email.trim().toLowerCase();
       try {
-        const r = await tenant<TokenResponse>("/auth/pin/login", {
+        const r = await tenant<LoginResponse>("/auth/pin/login", {
           method: "POST",
           auth: false,
-          body: { email: email.trim(), device_id: dev.device_id, pin },
+          body: { email: who, pin },
         });
+        if ("pending_2fa" in r) {
+          setPendingToken(r.pending_token);
+          return { pending2fa: true };
+        }
         acceptTokens(r);
+        return { pending2fa: false };
       } catch (e) {
-        // Locked out or revoked: this device's PIN no longer exists server-side,
-        // so the screen must stop offering it.
+        // Switched off (too many misses) or never set: the account has no PIN
+        // any more, on any device — stop offering one.
         if (e instanceof ApiError && (e.code === "PIN_LOCKED" || e.code === "PIN_LOGIN_UNAVAILABLE")) {
-          pinStore.remove(email);
+          lastSessionStore.setQuickPin(who, false);
         }
         throw e;
       }
     },
     [acceptTokens],
-  );
-
-  const registerPin: AuthState["registerPin"] = React.useCallback(
-    async (pin, label = null, currentPassword = null) => {
-      const email = user?.email ?? "";
-      // Re-registering on this device REPLACES its PIN — the old one is revoked
-      // server-side rather than left working alongside the new.
-      const previous = email ? pinStore.get(email) : null;
-      const r = await tenant<{ device_id: string; label?: string | null }>(
-        "/auth/pin/register",
-        {
-          method: "POST",
-          body: {
-            pin,
-            label,
-            ...(previous ? { replace_device_id: previous.device_id } : {}),
-            ...(currentPassword ? { current_password: currentPassword } : {}),
-          },
-        },
-      );
-      if (email)
-        pinStore.set(email, {
-          device_id: r.device_id,
-          label: r.label ?? label,
-        });
-      return { device_id: r.device_id };
-      // `user`, NOT [] — on the first render `user` is null, so an empty array
-      // makes the `if (email)` branch permanently false.
-    },
-    [user],
   );
 
   const passkeyLogin: AuthState["passkeyLogin"] = React.useCallback(
@@ -550,16 +510,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (e) {
         // The account no longer holds this device's passkey: forget it here so
         // the next visit does not lead with a passkey that cannot work.
-        if (e instanceof ApiError && e.code === "PASSKEY_REVOKED" && who) {
+        // This is a REVOCATION (removed in My security, here or elsewhere) —
+        // the one thing that takes a passkey off a device — so the device's
+        // own passkey manager is told too, and stops offering it.
+        if (e instanceof ApiError && e.code === "PASSKEY_REVOKED") {
           const gone = (e.fields as { credential_id?: string } | undefined)?.credential_id || String(assertion.id);
-          passkeyDeviceStore.forgetId(who, gone);
+          if (who) passkeyDeviceStore.forgetId(who, gone);
+          void signalPasskeyGone(gone);
         }
         throw e;
       }
       if (!acceptTokens(r)) return;
       // A ceremony that COMPLETED is proof this device holds the credential:
-      // lead with it next time, scoped to exactly this one.
+      // lead with it next time, scoped to exactly this one — and ask the
+      // browser never to evict the record of it.
       passkeyDeviceStore.add(r.user.email, r.credential_id || String(assertion.id));
+      void keepDeviceStorage();
     },
     [acceptTokens],
   );
@@ -576,27 +542,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     tokenStore.setLocked(false);
     sessionClock.clear();
     persistUser(null);
-    // Clear all persisted client state on logout: tokens, cached user, theme +
-    // env preferences. DEVICE facts are carried across the wipe — the Quick PIN
-    // and passkey records (the whole point is signing back in fast), the device
-    // id (the time clock counts hardware), the remembered identity, and the
-    // passkey-offer answers (so "Not now" and a dismissed nudge are not undone
-    // by every sign-out).
-    try {
-      const pinSnap = pinStore.snapshot();
-      const devSnap = deviceIdStore.snapshot();
-      const lastSnap = lastSessionStore.snapshot();
-      const pkSnap = passkeyDeviceStore.snapshot();
-      const kept = DEVICE_KEYS.map((k) => [k, localStorage.getItem(k)] as const);
-      localStorage.clear();
-      pinStore.restore(pinSnap);
-      deviceIdStore.restore(devSnap);
-      lastSessionStore.restore(lastSnap);
-      passkeyDeviceStore.restore(pkSnap);
-      for (const [k, v] of kept) if (v) localStorage.setItem(k, v);
-    } catch {
-      /* @silent:storage */
-    }
+    // Clear the SESSION's persisted state — tokens, cached user, theme and env
+    // preferences — and nothing that describes the device: who it belongs to,
+    // the passkeys on it, the time clock's hardware id, the passkey-offer
+    // answers. Those are never read back or rewritten here (device-keys.ts), so
+    // no sign-out, however it ends, can make the device forget its person or
+    // its passkey. Removing a passkey in My security is the only way off.
+    clearSessionKeepDevice();
     setUser(null);
     setLockReason(null);
     statusRef.current = "anon";
@@ -620,7 +572,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     tokenStore.setLocked(false);
     sessionClock.clear();
     persistUser(null);
-    lastSessionStore.clear();
+    // The next sign-in in this tab is for SOMEONE ELSE — a blank form, not the
+    // previous person's greeting. The device does not forget that person: the
+    // greeting and their passkey are still here ("Continue as …" goes back).
+    lastSessionStore.someoneElse.start();
     try {
       localStorage.removeItem(LOCK_KEY);
     } catch {
@@ -646,9 +601,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   /**
    * PERF S14. The value is memoised so the context identity changes only when
    * the auth state genuinely does — AuthProvider wraps the whole app, and a new
-   * value every render re-renders every consumer in the tree. `verify2fa` and
-   * `registerPin` carry the render state they read (`pendingToken`, `user`);
-   * everything else is stable.
+   * value every render re-renders every consumer in the tree. `verify2fa`
+   * carries the render state it reads (`pendingToken`); everything else is
+   * stable.
    */
   const value = React.useMemo(
     () => ({
@@ -660,7 +615,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       login,
       verify2fa,
       pinLogin,
-      registerPin,
       passkeyLogin,
       logout,
       lockNow,
@@ -676,7 +630,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       login,
       verify2fa,
       pinLogin,
-      registerPin,
       passkeyLogin,
       logout,
       lockNow,

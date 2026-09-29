@@ -12,6 +12,7 @@
  */
 import { tenant } from "./api-client";
 import { passkeyDeviceStore } from "./passkey-devices";
+import { keepDeviceStorage } from "./device-memory";
 
 function b64urlToBuf(b64url: string): ArrayBuffer {
   const pad = "=".repeat((4 - (b64url.length % 4)) % 4);
@@ -270,9 +271,39 @@ export async function registerPasskey(opts: {
     body: { attestation: fromCredential(cred), label, challengeToken: options._challengeToken },
   });
   // Recorded only after the server verified the attestation — a credential the
-  // server refused is not one this browser can sign in with.
+  // server refused is not one this browser can sign in with. (The server also
+  // remembers it against this device — known-device.js — for when the browser
+  // erases this record.)
   if (opts.email) passkeyDeviceStore.add(opts.email, r.credential_id);
+  // The device is now worth remembering: ask the browser never to evict it.
+  void keepDeviceStorage();
   return r;
+}
+
+/**
+ * Tell THIS device's passkey manager (iCloud Keychain, Google Password Manager,
+ * Windows Hello) that a credential is gone, so it stops offering it — the
+ * WebAuthn Signal API. Called only when a passkey is REVOKED: removed in My
+ * security, or refused by the server as no longer on the account. That is the
+ * one way a passkey leaves a device, and this is what makes it leave the OS
+ * list too rather than linger as a fingerprint prompt that cannot work.
+ *
+ * A browser without the API is not an error: the passkey then stays in the
+ * keychain, unusable here (the server refuses it) until the person deletes it.
+ */
+export async function signalPasskeyGone(credentialId: string): Promise<void> {
+  try {
+    const PKC = (typeof window !== "undefined" ? window.PublicKeyCredential : undefined) as unknown as
+      | { signalUnknownCredential?: (o: { rpId: string; credentialId: string }) => Promise<void> }
+      | undefined;
+    if (!credentialId || !PKC || typeof PKC.signalUnknownCredential !== "function") return;
+    // The RP ID the server registered under is the host we are served on
+    // (webauthn.service getRpInfo) — the same value from this side.
+    await PKC.signalUnknownCredential({ rpId: window.location.hostname, credentialId });
+  } catch {
+    /* @silent:teardown — the server already refuses the credential; this only
+       tidies the OS list, and a browser that declines leaves nothing broken. */
+  }
 }
 
 export const listPasskeys = () => tenant<PasskeyCredential[]>("/auth/passkey/credentials");

@@ -140,8 +140,10 @@ function sessionClock(remaining) {
   };
 }
 
-function signPendingTwoFaToken(userId) {
-  return jwt.sign({ sub: userId, typ: "2fa_pending" }, config.JWT_ACCESS_SECRET, {
+/** `via` names the first factor ("password" | "pin"), so the audit trail of the
+ *  session the code completes says how it began. */
+function signPendingTwoFaToken(userId, via = "password") {
+  return jwt.sign({ sub: userId, typ: "2fa_pending", via }, config.JWT_ACCESS_SECRET, {
     expiresIn: TWOFA_PENDING_TTL,
   });
 }
@@ -200,6 +202,7 @@ async function issueSessionTokens(client, user, { ip, userAgent, environment, me
 
   const aiEnabled = await resolveAiEnabled(client);
   const channels = await resolveChannels(client);
+  const hasQuickPin = await quickPinFlag(client, user.user_id);
 
   return {
     access_token: accessToken,
@@ -207,7 +210,7 @@ async function issueSessionTokens(client, user, { ip, userAgent, environment, me
     token_type: "Bearer",
     expires_in: config.JWT_ACCESS_TTL,
     ...sessionClock(remaining),
-    user: { user_id: user.user_id, email: user.email, display_name: user.full_name, ai_enabled: aiEnabled, channels },
+    user: { user_id: user.user_id, email: user.email, display_name: user.full_name, ai_enabled: aiEnabled, channels, has_quick_pin: hasQuickPin },
   };
 }
 
@@ -340,7 +343,8 @@ async function verifyTotp(client, { pendingToken, code, ip, userAgent, environme
     throw new AppError("INVALID_2FA_CODE", "Invalid authentication code", 401);
   }
 
-  return issueSessionTokens(client, user, { ip, userAgent, environment, method: "password+totp" });
+  const method = payload.via === "pin" ? "pin+totp" : "password+totp";
+  return issueSessionTokens(client, user, { ip, userAgent, environment, method });
 }
 
 /** Generates+stores a secret but does NOT enable 2FA yet — enableTotp()
@@ -567,6 +571,8 @@ async function me(client, user) {
     role: roles.length ? (roles.length > 1 ? `${roles[0]} +${roles.length - 1}` : roles[0]) : null,
     ai_enabled,
     channels,
+    // The sign-in and lock screens offer the PIN on any device where this is true.
+    has_quick_pin: await quickPinFlag(client, user.user_id),
   };
 }
 
@@ -1260,22 +1266,37 @@ async function setSignature(client, { id, html, actor = {} }) {
   return row;
 }
 
-// ── Device-bound quick PIN login ──
-// Fast unlock on a trusted device: a fully-authenticated user registers a PIN
-// bound to a device; PIN login on that device issues real tokens. A new device
-// or repeated PIN failures fall back to full password login (PIN + password
-// fallback model). Registering requires a FRESH sign-in (or the current
-// password — see session-policy.assertFreshAuth), so the device is trusted by
-// someone who just proved who they are — PIN login therefore skips the 2FA
-// challenge.
+// ── Quick PIN — one per person, on any device (14230) ──
+//
+// Owner decision, 29 Sep 2026: the PIN belongs to the PERSON. Set once, it
+// signs them in on their phone, their laptop, anywhere; the passkey is the one
+// credential that belongs to a device.
+//
+// Four digits were safe on ONE device because an attacker needed the device.
+// Valid anywhere, an attacker needs only the email — so the limits that used to
+// be per device are now per account, and they count every miss from everywhere:
+//
+//   · PIN_MAX_FAILS misses IN A ROW switch the PIN off. The owner's correct PIN
+//     ends the run, which alone would let a patient attacker keep guessing four
+//     at a time between the owner's own sign-ins — so
+//   · PIN_WINDOW_MAX misses in any PIN_WINDOW_DAYS switch it off as well, and
+//     the owner's success does NOT reset that. Ten guesses a month against a
+//     10,000-code space (less the refused patterns) is ~0.1%, and the owner is
+//     told at the first switch-off.
+//   · Switched off means DELETED: the person signs in another way and sets a
+//     new PIN. Nothing re-enables the old one.
+//
+// And the PIN stands in for the PASSWORD, never for the second factor: an
+// account with an authenticator app is asked for its code after the PIN, the
+// same as after the password. (Before, the device binding was the second
+// factor; there is no device binding now.) A passkey is still the one-touch way
+// in for those accounts — it is two factors on its own.
+//
+// Setting or changing the PIN requires a FRESH sign-in (or the current password
+// — session-policy.assertFreshAuth), because it hands out a permanent way in.
 const PIN_MAX_FAILS = 5;
-/**
- * Active PIN devices per person. A laptop, a phone, a tablet and a spare leave
- * room; past that, the list stops describing a person's own devices and starts
- * describing every shared machine they ever touched — each one a standing way
- * into the account.
- */
-const PIN_MAX_DEVICES = 10;
+const PIN_WINDOW_MAX = 10;
+const PIN_WINDOW_DAYS = 30;
 
 /** The one security alert every new way into an account raises (unconditional). */
 async function notifyCredentialChange(client, { userId, title, body, entityRef }) {
@@ -1292,13 +1313,26 @@ async function notifyCredentialChange(client, { userId, title, body, entityRef }
     });
   } catch (err) {
     // The credential change already happened and is audited; failing it over
-    // the bell icon would leave the user unable to add a PIN when the
+    // the bell icon would leave the user unable to set a PIN when the
     // notification table is having a bad day. (taxonomy: degraded-optional)
     logger.warn({ err, user_id: userId }, "[auth] credential-change notification failed");
   }
 }
 
-async function registerPinDevice(client, { userId, pin, label = null, replaceDeviceId = null, sessionId = null, currentPassword = null }) {
+/** Is a Quick PIN set for this person? Rides on every user block the client caches. */
+async function quickPinFlag(client, userId) {
+  try {
+    return await repo.hasQuickPin(client, userId);
+  } catch (err) {
+    // The flag only decides whether the sign-in screen OFFERS the PIN; a
+    // wrong "false" costs a tap on "Use password", never a sign-in.
+    // (taxonomy: degraded-optional)
+    logger.warn({ err, user_id: userId }, "[auth] quick-pin flag unavailable");
+    return false;
+  }
+}
+
+async function setQuickPin(client, { userId, pin, sessionId = null, currentPassword = null }) {
   const user = await repo.getUserSafe(client, userId);
   if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
 
@@ -1307,93 +1341,116 @@ async function registerPinDevice(client, { userId, pin, label = null, replaceDev
 
   await sessionPolicy.assertFreshAuth(client, { sessionId, userId, currentPassword });
 
-  // Re-registering on a device that already has a PIN REPLACES it. Before this,
-  // every "change my PIN" left the old device row ACTIVE — a second, forgotten
-  // PIN that still opened the account from that browser.
-  if (replaceDeviceId) await repo.revokeDevice(client, replaceDeviceId, userId);
-
-  if ((await repo.countActiveDevices(client, userId)) >= PIN_MAX_DEVICES) {
-    throw new AppError(
-      "PIN_DEVICE_LIMIT",
-      `You already have ${PIN_MAX_DEVICES} devices with a Quick PIN. Revoke one you no longer use, then try again.`,
-      409,
-    );
-  }
-
   const pinHash = await argon2.hash(String(pin), ARGON);
-  const cleanLabel = label ? String(label).trim().slice(0, 80) || null : null;
-  const row = await repo.insertDevice(client, { userId, label: cleanLabel, pinHash });
+  const row = await repo.upsertQuickPin(client, { userId, pinHash });
+  const changed = row && row.inserted === false;
   await audit(client, {
     actorUserId: userId,
-    action: "app_user.pin_device.registered",
+    action: changed ? "app_user.quick_pin.changed" : "app_user.quick_pin.set",
     moduleKey: events.MODULE,
-    entityRef: "user_device:" + row.device_id,
-    after: { label: row.label, replaced: replaceDeviceId || null },
+    entityRef: "app_user:" + userId,
     isSensitive: true,
   });
   await notifyCredentialChange(client, {
     userId,
-    title: "A Quick PIN was set up on a device",
-    body: `A Quick PIN was set up${row.label ? ` on "${row.label}"` : ""}. If this wasn't you, revoke it in My security and change your password.`,
-    entityRef: "user_device:" + row.device_id,
+    title: changed ? "Your Quick PIN was changed" : "A Quick PIN was set up on your account",
+    body: changed
+      ? "Your Quick PIN was changed. The old one no longer works on any device. If this wasn't you, change your password now."
+      : "A Quick PIN now signs you in on any device. If this wasn't you, turn it off in My security and change your password.",
+    entityRef: "app_user:" + userId,
   });
-  return { device_id: row.device_id, label: row.label, status: row.status, created_at: row.created_at };
+  return { enabled: true, created_at: row.created_at, updated_at: row.updated_at, last_used_at: row.last_used_at };
 }
 
-async function pinLogin(client, { email, deviceId, pin, ip, userAgent, environment }) {
-  const passwordFallback = new AppError("PIN_LOGIN_UNAVAILABLE", "Please sign in with your password", 401);
+async function getQuickPinStatus(client, userId) {
+  const row = await repo.quickPinStatus(client, userId);
+  return row ? { enabled: true, ...row } : { enabled: false, created_at: null, updated_at: null, last_used_at: null };
+}
+
+async function removeQuickPin(client, { userId }) {
+  const row = await repo.deleteQuickPin(client, userId);
+  if (!row) throw new AppError("NOT_FOUND", "No Quick PIN is set up", 404);
+  await audit(client, { actorUserId: userId, action: "app_user.quick_pin.removed", moduleKey: events.MODULE, entityRef: "app_user:" + userId, isSensitive: true });
+  await notifyCredentialChange(client, {
+    userId,
+    title: "Your Quick PIN was turned off",
+    body: "Your Quick PIN no longer signs you in on any device. If this wasn't you, change your password.",
+    entityRef: "app_user:" + userId,
+  });
+  return { enabled: false };
+}
+
+/**
+ * Sign in with the email and the PIN, from any device. `deviceId` is accepted
+ * and ignored: a client from before 14230 still sends one.
+ *
+ * Returns the token pair, or `{ pending_2fa }` for an account with an
+ * authenticator app — the PIN replaced the password, not the code.
+ */
+async function pinLogin(client, { email, pin, ip, userAgent, environment }) {
+  const unavailable = new AppError(
+    "PIN_LOGIN_UNAVAILABLE",
+    "Quick PIN isn't set up for this account. Sign in with your password.",
+    401,
+  );
   const user = await repo.findByEmail(client, String(email || "").toLowerCase());
-  if (!user || user.status !== "ACTIVE") throw passwordFallback;
-  const device = await repo.getActiveDeviceForUser(client, deviceId, user.user_id);
-  if (!device) throw passwordFallback; // unknown/revoked device → full login
-  const ok = await argon2.verify(device.pin_hash, String(pin || "")).catch(() => false);
+  if (!user || user.status !== "ACTIVE") throw unavailable;
+  const row = await repo.getQuickPin(client, user.user_id);
+  if (!row) throw unavailable;
+
+  const ok = await argon2.verify(row.pin_hash, String(pin || "")).catch(() => false);
   if (!ok) {
-    const { failed_pin } = await repo.recordDevicePinFailure(client, deviceId);
-    const lockedOut = failed_pin >= PIN_MAX_FAILS;
+    const { failed_attempts: inRow, window_failures: inWindow } = await repo.recordQuickPinFailure(client, user.user_id);
+    const left = Math.max(0, Math.min(PIN_MAX_FAILS - inRow, PIN_WINDOW_MAX - inWindow));
+    const lockedOut = left === 0;
     if (lockedOut) {
-      await repo.revokeDevice(client, deviceId, user.user_id);
+      await repo.deleteQuickPin(client, user.user_id);
       await audit(client, {
         actorUserId: user.user_id,
-        action: "app_user.pin_device.locked_out",
+        action: "app_user.quick_pin.locked_out",
         moduleKey: events.MODULE,
-        entityRef: "user_device:" + deviceId,
+        entityRef: "app_user:" + user.user_id,
+        after: { in_a_row: inRow, in_window: inWindow },
         ip,
         isSensitive: true,
       });
       await notifyCredentialChange(client, {
         userId: user.user_id,
-        title: "A Quick PIN was switched off after 5 wrong attempts",
-        body: "Someone entered the wrong PIN five times, so that device's Quick PIN was switched off. If this wasn't you, change your password.",
-        entityRef: "user_device:" + deviceId,
+        title: "Your Quick PIN was switched off after too many wrong attempts",
+        body:
+          inRow >= PIN_MAX_FAILS
+            ? `Someone entered a wrong Quick PIN ${PIN_MAX_FAILS} times in a row, so it was switched off on every device. If this wasn't you, change your password, then set a new PIN.`
+            : `Your Quick PIN was entered wrongly ${PIN_WINDOW_MAX} times in ${PIN_WINDOW_DAYS} days, so it was switched off on every device. If this wasn't you, change your password, then set a new PIN.`,
+        entityRef: "app_user:" + user.user_id,
       });
     }
     await emitEvent(client, { eventTypeKey: events.LOGIN_FAILED, moduleKey: events.MODULE, entityRef: "app_user:" + user.user_id, payload: { method: "pin", reason: lockedOut ? "pin_lockout" : "bad_pin" } });
-    const left = PIN_MAX_FAILS - failed_pin;
     throw new AppError(
       lockedOut ? "PIN_LOCKED" : "INVALID_PIN",
       lockedOut
-        ? "Too many wrong PINs — Quick PIN is now off on this device. Sign in with your password."
-        : `That PIN isn't right. ${left} attempt${left === 1 ? "" : "s"} left before Quick PIN is switched off on this device.`,
+        ? "Too many wrong PINs — your Quick PIN is now off. Sign in with your password, then set a new one."
+        : `That PIN isn't right. ${left} attempt${left === 1 ? "" : "s"} left before your Quick PIN is switched off.`,
       401,
       lockedOut ? null : { attempts_left: left },
     );
   }
-  await repo.resetDevicePin(client, deviceId);
-  return issueSessionTokens(client, user, { ip, userAgent, environment, method: "pin" });
-}
+  await repo.recordQuickPinSuccess(client, user.user_id);
 
-const listPinDevices = (client, userId) => repo.listDevices(client, userId);
-async function revokePinDevice(client, { userId, deviceId }) {
-  const row = await repo.revokeDevice(client, deviceId, userId);
-  if (!row) throw new AppError("NOT_FOUND", "Device not found", 404);
-  await audit(client, { actorUserId: userId, action: "app_user.pin_device.revoked", moduleKey: events.MODULE, entityRef: "user_device:" + deviceId, isSensitive: true });
-  return { revoked: true };
+  if (user.is_2fa_enabled) {
+    return {
+      pending_2fa: true,
+      pending_token: signPendingTwoFaToken(user.user_id, "pin"),
+      expires_in: TWOFA_PENDING_TTL,
+    };
+  }
+  return issueSessionTokens(client, user, { ip, userAgent, environment, method: "pin" });
 }
 
 module.exports = {
   listUsers, getUser, listLinkableEmployees, createUser, updateUser, setPassword, setStatus,
   getSignature, setSignature,
-  registerPinDevice, pinLogin, listPinDevices, revokePinDevice,
+  setQuickPin, getQuickPinStatus, removeQuickPin, pinLogin,
+  PIN_MAX_FAILS, PIN_WINDOW_MAX,
   issueSessionTokens,
   login,
   // Exported for tests: the throttle curve is the security-relevant decision

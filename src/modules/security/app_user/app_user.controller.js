@@ -1,6 +1,7 @@
 "use strict";
 const { asyncHandler } = require("../../../utils/errors");
 const service = require("./app_user.service");
+const knownDevice = require("./known-device");
 
 const actor = (req) => req.user || { user_id: null };
 const list = asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.listUsers(c, req.query)) }));
@@ -24,21 +25,59 @@ const setStatus = asyncHandler(async (req, res) => res.json({ data: await req.id
 const getSignature = asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.getSignature(c, req.params.id)) }));
 const setSignature = asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.setSignature(c, { id: req.params.id, html: req.body.html, actor: actor(req) })) }));
 
-const pinRegister = asyncHandler(async (req, res) => res.status(201).json({
-  data: await req.identityDb((c) => service.registerPinDevice(c, {
+// ── Quick PIN — one per person, on any device ──
+const pinStatus = asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.getQuickPinStatus(c, req.user.user_id)) }));
+const pinSet = asyncHandler(async (req, res) => res.json({
+  data: await req.identityDb((c) => service.setQuickPin(c, {
     userId: req.user.user_id,
     pin: req.body.pin,
-    label: req.body.label,
-    // The device's previous PIN record, replaced rather than left ACTIVE.
-    replaceDeviceId: req.body.replace_device_id || null,
     // Fresh-auth: the session the request came from, or the current password.
     sessionId: req.user.session_id || null,
     currentPassword: req.body.current_password || null,
   })),
 }));
-const pinLogin = asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.pinLogin(c, { email: req.body.email, deviceId: req.body.device_id, pin: req.body.pin, ip: req.ip, userAgent: req.headers["user-agent"], environment: req.env })) }));
-const pinDevices = asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.listPinDevices(c, req.user.user_id)) }));
-const pinRevoke = asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.revokePinDevice(c, { userId: req.user.user_id, deviceId: req.params.deviceId })) }));
+const pinRemove = asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.removeQuickPin(c, { userId: req.user.user_id })) }));
+const pinLogin = asyncHandler(async (req, res) => {
+  const result = await req.identityDb((c) => service.pinLogin(c, { email: req.body.email, pin: req.body.pin, ip: req.ip, userAgent: req.headers["user-agent"], environment: req.env }));
+  if (result && result.access_token) await knownDevice.remember(req, res, { userId: result.user.user_id });
+  res.json({ data: result });
+});
+
+// ── Retired with 14230: the per-device PIN routes, kept (deprecated) so a client
+// bundle older than the change keeps working until it reloads. Each maps onto
+// the ONE account PIN; "account" stands in for the device id they used to carry.
+const LEGACY_PIN_DEVICE = "account";
+const pinRegisterLegacy = asyncHandler(async (req, res) => {
+  const r = await req.identityDb((c) => service.setQuickPin(c, {
+    userId: req.user.user_id,
+    pin: req.body.pin,
+    sessionId: req.user.session_id || null,
+    currentPassword: req.body.current_password || null,
+  }));
+  res.status(201).json({ data: { device_id: LEGACY_PIN_DEVICE, label: "Every device", status: "ACTIVE", created_at: r.created_at } });
+});
+const pinDevicesLegacy = asyncHandler(async (req, res) => {
+  const st = await req.identityDb((c) => service.getQuickPinStatus(c, req.user.user_id));
+  res.json({
+    data: st.enabled
+      ? [{ device_id: LEGACY_PIN_DEVICE, label: "Every device", status: "ACTIVE", failed_pin: 0, created_at: st.created_at, last_used_at: st.last_used_at }]
+      : [],
+  });
+});
+const pinRevokeLegacy = asyncHandler(async (req, res) => {
+  await req.identityDb((c) => service.removeQuickPin(c, { userId: req.user.user_id }));
+  res.json({ data: { revoked: true } });
+});
+
+/**
+ * GET /auth/device — who this device belongs to, from the server's memory of
+ * it (known-device.js). Public: it is read on the sign-in screen, before anyone
+ * has a token, and answers `{ account: null }` for a device it does not know.
+ */
+const device = asyncHandler(async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json({ data: await knownDevice.lookup(req) });
+});
 
 const login = asyncHandler(async (req, res) => {
   const result = await req.identityDb((client) =>
@@ -50,6 +89,8 @@ const login = asyncHandler(async (req, res) => {
       environment: req.env,
     }),
   );
+  // A pending 2FA challenge is not a sign-in yet; the code that completes it is.
+  if (result && result.access_token) await knownDevice.remember(req, res, { userId: result.user.user_id });
   res.json({ data: result });
 });
 
@@ -123,6 +164,7 @@ const verifyTotp = asyncHandler(async (req, res) => {
       environment: req.env,
     }),
   );
+  if (result && result.access_token) await knownDevice.remember(req, res, { userId: result.user.user_id });
   res.json({ data: result });
 });
 
@@ -145,7 +187,8 @@ const disableTotp = asyncHandler(async (req, res) => {
 module.exports = {
   resendInvite,
   list, get, linkableEmployees, create, update, setPassword, setStatus, getSignature, setSignature,
-  pinRegister, pinLogin, pinDevices, pinRevoke,
+  pinStatus, pinSet, pinRemove, pinLogin, device,
+  pinRegisterLegacy, pinDevicesLegacy, pinRevokeLegacy,
   login,
   setAvatar,
   forgotPassword,

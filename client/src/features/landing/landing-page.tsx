@@ -23,6 +23,7 @@ import {
 import { getMode, setMode, type ThemeMode } from "@/lib/theme-mode";
 import { fetchLogin, type LoginConfig } from "@/lib/branding";
 import { lastSessionStore } from "@/lib/last-session";
+import { recallDevice } from "@/lib/device-memory";
 
 const NEXT: Record<ThemeMode, ThemeMode> = {
   light: "dark",
@@ -65,6 +66,20 @@ export function LandingPage() {
   const wantsSignIn = !!lastSessionStore.get() || !!(location.state as { from?: string } | null)?.from;
   React.useEffect(() => {
     if (status === "anon" && wantsSignIn) setOpen(true);
+  }, [status, wantsSignIn]);
+
+  // A device whose browser erased its own storage (Safari does after seven
+  // days away) still belongs to its person: the server remembers it
+  // (device-memory.ts), and that is reason enough to open the sign-in too.
+  React.useEffect(() => {
+    if (status !== "anon" || wantsSignIn) return;
+    let alive = true;
+    void recallDevice().then((a) => {
+      if (alive && a) setOpen(true);
+    });
+    return () => {
+      alive = false;
+    };
   }, [status, wantsSignIn]);
 
   // Login-screen config (GET /branding/login) — authored on /settings/login.

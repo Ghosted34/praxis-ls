@@ -11,6 +11,7 @@ const { authMiddleware } = require("../../../middleware/auth");
 const { requirePermission } = require("../../../middleware/rbac");
 const controller = require("./app_user.controller");
 const validator = require("./app_user.validator");
+const { deprecate } = require("../../../middleware/api-version");
 // Abuse guards. Moved to shared/http/rate-limit.js on 2026-08-04 (audit SEC-C3
 // + SEC-H5): the limiters that existed here were in-memory (so a two-container
 // deploy allowed 2x the configured max) and covered only the recovery
@@ -25,6 +26,7 @@ const {
   changePasswordLimiter,
   webauthnLimiter,
   webauthnOptionsLimiter,
+  deviceLimiter,
 } = require("../../../shared/http/rate-limit");
 
 // Generic user CRUD (list/get/create/update/soft-delete) — NOW GATED (was the
@@ -87,13 +89,32 @@ authRouter.post("/2fa/setup", authMiddleware, controller.setupTotp);
 authRouter.post("/2fa/enable", authMiddleware, validator.totpCode, controller.enableTotp);
 authRouter.post("/2fa/disable", authMiddleware, validator.totpCode, controller.disableTotp);
 
-// Device-bound quick PIN login. /pin/login is public (it's a way to obtain a
-// token); register/list/revoke require a valid access token (the device is
-// trusted precisely because the user was fully signed in when registering it).
+// Quick PIN — ONE per person, valid on any device (14230). /pin/login is public
+// (it is a way to obtain a token). Setting it compares the current password on
+// a stale session, so it carries the per-user change-password limiter: a stolen
+// access token must not be a licence to guess the password here either.
 authRouter.post("/pin/login", pinLimiter, validator.pinLogin, controller.pinLogin);
-authRouter.post("/pin/register", authMiddleware, validator.pinRegister, controller.pinRegister);
-authRouter.get("/pin/devices", authMiddleware, controller.pinDevices);
-authRouter.delete("/pin/devices/:deviceId", authMiddleware, controller.pinRevoke);
+authRouter.get("/pin", authMiddleware, controller.pinStatus);
+authRouter.put("/pin", authMiddleware, changePasswordLimiter, validator.pinSet, controller.pinSet);
+authRouter.delete("/pin", authMiddleware, controller.pinRemove);
+
+// Retired with 14230 — the per-device PIN routes. Kept, deprecated, so a tab
+// still running an older bundle can set, list and turn off the (now account-
+// wide) PIN until it reloads; removed after the sunset.
+const pinDeviceRoutesSunset = deprecate({
+  sunset: "2026-11-30",
+  replacement: "/api/tenant/auth/pin",
+  reason: "The Quick PIN is one per person, valid on any device, since 14230.",
+});
+authRouter.post("/pin/register", authMiddleware, changePasswordLimiter, pinDeviceRoutesSunset, validator.pinSet, controller.pinRegisterLegacy);
+authRouter.get("/pin/devices", authMiddleware, pinDeviceRoutesSunset, controller.pinDevicesLegacy);
+authRouter.delete("/pin/devices/:deviceId", authMiddleware, pinDeviceRoutesSunset, controller.pinRevokeLegacy);
+
+// The device, as the SERVER remembers it (known-device.js): who signs in here
+// and which passkeys live here, from an HttpOnly cookie that survives the
+// browser clearing its own storage. Public — the sign-in screen reads it before
+// anyone has a token — and grants nothing.
+authRouter.get("/device", deviceLimiter, controller.device);
 
 // WebAuthn passkey — passwordless, device-bound (Face ID / Touch ID / Windows Hello / Android screen lock).
 // Registration requires a live AND fresh session (or the current password — session-policy.assertFreshAuth), so a

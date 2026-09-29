@@ -1090,48 +1090,58 @@ mounted (the sheet is an overlay, not a route), focus returns to the row with
 reset. `e2e/phone-record-sheet.spec.ts` measures it — the list's scroll under the open sheet
 against the scroll after ✕ and after Back.
 
-### 3.15 The sign-in screen — the device remembers, and lets go
+### 3.15 The sign-in screen — the device remembers, and never forgets on its own
 
-`features/auth/login-modal.tsx` is the front door, and it is **identity-first**: once a
-device has signed somebody in, it greets them by name and opens on the fastest route *that
-device* can actually complete. Three device-bound stores decide what that is — none of them
-is session state, and all three survive sign-out on purpose:
+`features/auth/login-modal.tsx` is the front door (the lock screen uses the same
+`SignInPanel`), and it is **identity-first**: once a device has signed somebody in, it greets
+them by name and opens on the fastest route they have *here*. Two device stores decide what
+that is — neither is session state:
 
 | Store | Answers |
 | --- | --- |
-| `lastSessionStore` | whose account this device belongs to. Turns the screen into a greeting and removes the email field entirely. |
-| `pinStore` | this browser holds a Quick PIN for that account. |
-| `passkeyDeviceStore` | this browser holds a passkey for that account. |
+| `lastSessionStore` | whose device this is, and whether their account has a Quick PIN. Turns the screen into a greeting and removes the email field entirely. |
+| `passkeyDeviceStore` | which of that person's passkeys live in this browser's authenticator. |
 
-Priority is **PIN → passkey → password**. The PIN leads when it exists because it is four
-taps and the passkey ceremony needs a tap to start at all; the orb sits above the boxes so
-the choice is visible; the password is a fallback link rather than an empty field competing
-with both, and it is the whole door when neither exists. A route is offered **only** when the
-device can complete it — a PIN that exists for the account on some *other* machine must not
-put boxes on this screen. That is exactly why the passkey record is local: the server will
-happily list a credential that this browser's authenticator cannot answer.
+Priority is **passkey → Quick PIN → password**. The passkey leads where this device knows it
+holds one: it is two factors in one touch and cannot be phished. The **Quick PIN belongs to
+the person, not the device** (migration 14230): set once in My security, it signs them in on
+every device, so the PIN boxes appear wherever `has_quick_pin` is true. An account with an
+authenticator app is asked for its code after the PIN, as after the password. The passkey is
+also offered one tap away ("Use Face ID") on any device with an authenticator of its own,
+even with no local record — the browser can erase the record while the passkey is still in
+the OS keychain.
 
-**WebAuthn cannot auto-prompt.** `navigator.credentials.get()` is refused outside a user
-gesture, so "defaults to the passkey" can only ever mean *the ceremony is the most prominent
-thing on the card and exactly one tap away*. Never write an effect that calls it on mount.
+**The passkey starts itself only when the window has focus.** Browsers that insist on a user
+gesture refuse quietly and the orb waits for a tap; never treat that refusal as a fact about
+the credential.
+
+**The device forgets nothing on its own.** Owner decision, 29 Sep 2026: the one thing that
+takes a passkey off a device is removing it in My security (which also tells the OS passkey
+manager, via the WebAuthn Signal API, `signalPasskeyGone()`). Concretely:
+
+- **Sign-out** is one confirm (`<SignOutDialog>`) with no "forget me" branch. `logout()`
+  calls `clearSessionKeepDevice()` (`lib/device-keys.ts`), which removes session keys one by
+  one and never reads, rewrites or removes a key on `DEVICE_KEYS`. Add a key there when it
+  describes the machine rather than the session; `device-keys.test.ts` checks the stores'
+  own keys are listed.
+- **"Not you? Switch account"** does not delete anything. It opens a blank form for someone
+  else in this tab (`lastSessionStore.someoneElse`) with "Continue as …" back; only a
+  different person actually signing in moves the greeting to them, and their predecessor's
+  passkey record stays.
+- **The browser erasing storage** (Safari's seven-day cap on script-written storage,
+  eviction under disk pressure) is undone by `recallDevice()` (`lib/device-memory.ts`),
+  which reads `GET /auth/device`. The server remembers the device behind a `__Host-`,
+  HttpOnly, SameSite=Strict cookie it set itself — not script-written storage, so outside
+  both. It grants nothing; it returns only what localStorage held. `keepDeviceStorage()`
+  also asks the browser to make storage persistent when a passkey is set up or used.
 
 **The email field is absent, not read-only, while the device knows you.** That is what
 retired the old refill defect — a sync effect that could not tell "the user just deleted the
-last character" from "the prefill has not happened yet", and so re-filled the address the
-user was clearing. Changing account is `Not you? Switch account`, which clears
-`lastSessionStore` and hands over an empty, focused field.
+last character" from "the prefill has not happened yet".
 
-**Sign-out asks, because the answer differs by machine.** `<SignOutDialog>` is one confirm
-with a "Remember me on this device" `<Checkbox>`, ticked on every opening. Ticked is a plain
-sign-out (keeps the identity; tomorrow's sign-in is fast); unticked also forgets the account
-(clears the greeting, the PIN record and the passkey record). The removal is
-`forgetDeviceAccount()` in `lib/device-account.ts`, which owns that set so a refactor cannot
-drop one — a PIN left behind still opens the account from the sign-in screen's PIN tab, and
-nothing on screen would say so. Order matters: call it **after** `logout()`, which restores
-its own snapshot of the device keys as it wipes `localStorage`.
-
-`features/auth/login-modal.email.test.tsx` and `login-modal.identity.test.tsx` are the
-contracts for all of the above.
+`features/auth/login-modal.email.test.tsx`, `login-modal.identity.test.tsx`,
+`app/auth/auth-lock.test.tsx` and `lib/device-keys.test.ts` are the contracts for all of the
+above.
 
 ## 4. Accessibility — the floor, not the aspiration
 

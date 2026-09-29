@@ -57,6 +57,7 @@ const { config } = require("../../../config/env");
 const { AppError } = require("../../../utils/errors");
 const { audit } = require("../../../shared/events/emit");
 const repo = require("./webauthn.repo");
+const knownDeviceRepo = require("./known-device.repo");
 const userRepo = require("./app_user.repo");
 const sessionPolicy = require("./session-policy");
 const notificationRepo = require("../../notification/notification.repo");
@@ -521,9 +522,22 @@ async function listCredentials(client, userId) {
   return repo.listForUser(client, userId);
 }
 
+/**
+ * Remove a passkey — the ONE thing that takes a passkey off a device. Nothing
+ * else does: not signing out, not "Not you?", not a browser clearing its
+ * storage, not a wrong PIN. The client also asks the device's own passkey
+ * manager to drop it (WebAuthn Signal API), so the OS stops offering it.
+ */
 async function deleteCredential(client, { userId, credentialId }) {
   const row = await repo.deleteCredential(client, credentialId, userId);
   if (!row) throw new AppError("NOT_FOUND", "Passkey not found", 404);
+  try {
+    await knownDeviceRepo.forgetPasskey(client, { userId, credentialId });
+  } catch (err) {
+    // The join in latestAccount already hides a removed passkey; this only
+    // keeps the rows tidy. (taxonomy: degraded-optional)
+    logger.warn({ err, user_id: userId }, "[webauthn] could not tidy known-device rows");
+  }
   await audit(client, {
     actorUserId: userId,
     action: "app_user.passkey.removed",

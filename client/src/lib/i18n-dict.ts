@@ -56,8 +56,7 @@ export const en = {
     signOut: "Sign out",
     lockScreen: "Lock screen",
     signOutTitle: "Sign out?",
-    signOutRemember: "Remember me on this device",
-    signOutRememberHint: "Untick on a shared computer.",
+    signOutKeeps: "This device will still recognise you, and your passkey stays on it. To take a passkey off a device, remove it in My security.",
     closeMenu: "Close menu",
   },
   auth: {
@@ -3456,8 +3455,7 @@ export const fr: Dict = {
     signOut: "Se déconnecter",
     lockScreen: "Verrouiller l'écran",
     signOutTitle: "Se déconnecter ?",
-    signOutRemember: "Se souvenir de moi sur cet appareil",
-    signOutRememberHint: "Décochez sur un ordinateur partagé.",
+    signOutKeeps: "Cet appareil vous reconnaîtra toujours et votre passkey y reste. Pour retirer un passkey d'un appareil, supprimez-le dans Ma sécurité.",
     closeMenu: "Fermer le menu",
   },
   auth: {

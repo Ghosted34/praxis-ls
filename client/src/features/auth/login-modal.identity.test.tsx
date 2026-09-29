@@ -3,20 +3,23 @@
  *
  * ── THE RULE, as the owner specified it ─────────────────────────────────────
  *
- *   The device remembers whose it is, and leads with the best route THIS
- *   device can complete:
+ *   The device remembers whose it is, and leads with the best route the
+ *   person has HERE:
  *
  *     a passkey that lives here   → the fingerprint orb (primary)
- *     otherwise a Quick PIN here  → the PIN boxes
+ *     otherwise their Quick PIN   → the PIN boxes — one PIN per person, valid
+ *                                   on every device (14230)
  *     otherwise                   → the password
  *
- *   The others stay one tap away ("Use PIN", "Use password"), because a
- *   credential can be revoked from another session and the person at the
- *   machine must always have a way in.
+ *   The others stay one tap away ("Use passkey", "Use PIN", "Use password"),
+ *   because a credential can be revoked from another session and the person at
+ *   the machine must always have a way in.
  *
- * Both halves of each answer are pinned, because either alone is a bug: a route
- * is OFFERED when the device can complete it, and NOT offered when it cannot (a
- * PIN or passkey that exists on some OTHER device must not appear here).
+ * Both halves of each answer are pinned. The orb LEADS only where this device
+ * knows it holds a passkey; the passkey is still OFFERED on any device with its
+ * own authenticator, because the browser can erase its record of a passkey
+ * that is still in the OS keychain. The PIN appears wherever the ACCOUNT has
+ * one, and nowhere it does not.
  *
  * ── AUTO-PROMPT ─────────────────────────────────────────────────────────────
  *
@@ -30,12 +33,13 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { ApiError } from "@/lib/api-client";
 import { lastSessionStore } from "@/lib/last-session";
-import { pinStore } from "@/lib/pin-store";
 import { passkeyDeviceStore } from "@/lib/passkey-devices";
 import { passkeyOfferStore } from "@/lib/passkey-offer";
 
 const passkeyLoginMock = vi.fn(async (_email?: string) => {});
-const pinLoginMock = vi.fn(async (_email: string, _pin: string) => {});
+const pinLoginMock = vi.fn(async (_email: string, _pin: string) => ({ pending2fa: false }));
+const recallDeviceMock = vi.fn(async () => null as unknown);
+const platformMock = vi.fn(async () => true);
 const loginMock = vi.fn(async (_email: string, _password: string) => ({ pending2fa: false }));
 const registerPasskeyMock = vi.fn(async () => ({ credential_id: "new-cred" }));
 
@@ -48,9 +52,20 @@ vi.mock("@/app/auth/auth-context", () => ({
   }),
 }));
 
+vi.mock("@/lib/device-memory", () => ({
+  recallDevice: () => recallDeviceMock(),
+  keepDeviceStorage: vi.fn(async () => {}),
+}));
+
 vi.mock("@/lib/webauthn", async () => {
   const actual = await vi.importActual<typeof import("@/lib/webauthn")>("@/lib/webauthn");
-  return { ...actual, registerPasskey: () => registerPasskeyMock() };
+  return {
+    ...actual,
+    registerPasskey: () => registerPasskeyMock(),
+    // The real probe caches its answer for the page's life; a test that needs a
+    // device WITHOUT an authenticator sets this instead.
+    platformAuthenticatorAvailable: () => platformMock(),
+  };
 });
 
 vi.mock("@/app/branding/branding-context", () => ({
@@ -84,12 +99,23 @@ const orb = () => screen.queryByRole("button", { name: /with your passkey/i });
 /** `PinInput` names each box "PIN digit N". */
 const pinBoxes = () => screen.queryAllByLabelText(/^PIN digit /);
 
+/** The account has a Quick PIN — which is all it takes, on any device. */
+const withPin = () =>
+  lastSessionStore.set({ email: EMAIL, display_name: "Ama Nkeng", avatar_url: null, has_quick_pin: true });
+/** The alternative that offers the passkey without leading with it. */
+const usePasskey = () => screen.queryByRole("button", { name: /^Use (Touch ID|passkey|Face ID|Windows Hello)/ });
+
 beforeEach(() => {
   localStorage.clear();
+  sessionStorage.clear();
+  recallDeviceMock.mockReset();
+  recallDeviceMock.mockResolvedValue(null);
+  platformMock.mockReset();
+  platformMock.mockResolvedValue(true);
   passkeyLoginMock.mockReset();
   passkeyLoginMock.mockResolvedValue(undefined);
   pinLoginMock.mockReset();
-  pinLoginMock.mockResolvedValue(undefined);
+  pinLoginMock.mockResolvedValue({ pending2fa: false });
   loginMock.mockClear();
   registerPasskeyMock.mockClear();
   navigateMock.mockClear();
@@ -116,9 +142,9 @@ describe("SignInPanel — the device leads with the best route it can complete",
     expect(screen.queryByLabelText("Email")).not.toBeInTheDocument();
   });
 
-  it("leads with the passkey when this device holds one — even when it also has a PIN", () => {
+  it("leads with the passkey when this device holds one — even when the account also has a PIN", () => {
     passkeyDeviceStore.add(EMAIL, "cred-1");
-    pinStore.set(EMAIL, { device_id: "d1", label: "This laptop" });
+    withPin();
     renderModal();
 
     expect(orb()).toBeInTheDocument();
@@ -129,14 +155,30 @@ describe("SignInPanel — the device leads with the best route it can complete",
     expect(screen.getByRole("button", { name: "Use password" })).toBeInTheDocument();
   });
 
-  it("falls back to the PIN when the device has a PIN and no passkey — and offers no orb", () => {
-    pinStore.set(EMAIL, { device_id: "d1", label: "This laptop" });
+  it("offers the account's PIN on a device where it was never set up — one PIN, every device", () => {
+    withPin();
     renderModal();
 
     expect(pinBoxes()).toHaveLength(4);
+    expect(screen.getByText(/Works on any device/)).toBeInTheDocument();
+    // No orb: this device has no record of a passkey…
     expect(orb()).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^Use (Touch ID|passkey|Face ID|Windows Hello)/ })).not.toBeInTheDocument();
+    // …but the passkey is one tap away, because the record can be erased while
+    // the passkey itself is still in the keychain.
+    expect(usePasskey()).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Use password" })).toBeInTheDocument();
+  });
+
+  it("offers no PIN for an account that has none", () => {
+    renderModal();
+    expect(pinBoxes()).toHaveLength(0);
+    expect(screen.queryByRole("button", { name: "Use PIN" })).not.toBeInTheDocument();
+  });
+
+  it("offers no passkey at all on a device without an authenticator of its own", async () => {
+    platformMock.mockResolvedValue(false);
+    renderModal();
+    await waitFor(() => expect(usePasskey()).not.toBeInTheDocument());
   });
 
   it("falls back to the password when the device holds neither", () => {
@@ -149,7 +191,7 @@ describe("SignInPanel — the device leads with the best route it can complete",
   it("switches route on request, and the PIN then leads", async () => {
     const user = userEvent.setup();
     passkeyDeviceStore.add(EMAIL, "cred-1");
-    pinStore.set(EMAIL, { device_id: "d1", label: "This laptop" });
+    withPin();
     renderModal();
 
     await user.click(screen.getByRole("button", { name: "Use PIN" }));
@@ -169,6 +211,20 @@ describe("SignInPanel — the device leads with the best route it can complete",
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
     expect(screen.getByLabelText("Password")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Sign in with a passkey/i })).toBeInTheDocument();
+  });
+
+  it("greets its person again after the browser erased its own storage — the server remembers the device", async () => {
+    localStorage.clear();
+    recallDeviceMock.mockImplementation(async () => {
+      // What device-memory's recallDevice does with GET /auth/device.
+      lastSessionStore.set({ email: EMAIL, display_name: "Ama Nkeng", avatar_url: null, has_quick_pin: true });
+      passkeyDeviceStore.add(EMAIL, "cred-1");
+      return { email: EMAIL, display_name: "Ama Nkeng", has_quick_pin: true, passkeys: ["cred-1"] };
+    });
+    renderModal();
+
+    expect(await screen.findByRole("heading", { name: "Welcome back, Ama" })).toBeInTheDocument();
+    expect(orb()).toBeInTheDocument();
   });
 });
 
@@ -200,7 +256,7 @@ describe("SignInPanel — each route runs the right ceremony", () => {
    */
   it("signs in on the fourth digit, without waiting for the button", async () => {
     const user = userEvent.setup();
-    pinStore.set(EMAIL, { device_id: "d1", label: "This laptop" });
+    withPin();
     renderModal();
 
     await user.click(pinBoxes()[0]);
@@ -210,22 +266,46 @@ describe("SignInPanel — each route runs the right ceremony", () => {
     expect(screen.queryByText(/PIN must be/)).not.toBeInTheDocument();
   });
 
-  it("moves to the password when this device's PIN has been switched off", async () => {
+  it("asks for the authenticator code after the PIN on an account that has one", async () => {
     const user = userEvent.setup();
-    pinStore.set(EMAIL, { device_id: "d1", label: "This laptop" });
+    withPin();
+    pinLoginMock.mockResolvedValueOnce({ pending2fa: true });
+    renderModal();
+
+    await user.click(pinBoxes()[0]);
+    await user.keyboard("4817");
+
+    expect(await screen.findByRole("heading", { name: "Two-step verification" })).toBeInTheDocument();
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
+
+  it("moves to the password when the account's PIN has been switched off", async () => {
+    const user = userEvent.setup();
+    withPin();
     pinLoginMock.mockImplementationOnce(async () => {
-      // What the real auth-context does on PIN_LOCKED.
-      pinStore.remove(EMAIL);
-      throw new ApiError("PIN_LOCKED", "Too many wrong PINs — Quick PIN is now off on this device. Sign in with your password.", 401);
+      throw new ApiError("PIN_LOCKED", "Too many wrong PINs — your Quick PIN is now off. Sign in with your password, then set a new one.", 401);
     });
     renderModal();
 
     await user.click(pinBoxes()[0]);
     await user.keyboard("4817");
 
-    expect(await screen.findByText(/Quick PIN is now off on this device/)).toBeInTheDocument();
+    expect(await screen.findByText(/your Quick PIN is now off/)).toBeInTheDocument();
     expect(pinBoxes()).toHaveLength(0);
+    expect(screen.queryByRole("button", { name: "Use PIN" })).not.toBeInTheDocument();
     expect(screen.getByLabelText("Password")).toBeInTheDocument();
+  });
+
+  it("runs the passkey for a device that has lost its record of one — the keychain still has it", async () => {
+    const user = userEvent.setup();
+    renderModal();
+
+    await user.click(usePasskey() as HTMLElement);
+    await user.click(orb() as HTMLElement);
+
+    // Bound to the account on screen, with no ids to scope to: the OS offers
+    // what its keychain holds for this workspace.
+    expect(passkeyLoginMock).toHaveBeenCalledWith(EMAIL);
   });
 
   it("stops leading with a passkey the account no longer holds", async () => {

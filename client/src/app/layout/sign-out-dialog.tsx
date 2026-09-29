@@ -1,32 +1,26 @@
 /**
- * Sign out — one confirm, one checkbox.
+ * Sign out — one confirm, and nothing on this device is forgotten.
  *
- * The device stores the account it belongs to, so the sign-in screen opens with
- * a greeting and a Quick PIN / passkey instead of an email box. That means
- * "sign out" no longer implies the machine forgets you, and on a SHARED
- * workstation the person leaving may want it to. So the choice is offered here,
- * the only moment anyone knows the answer — but as a single ticked checkbox,
- * not three buttons and a paragraph each: nobody read the paragraphs.
+ * Signing out ends the SESSION. It does not touch what the device knows about
+ * its person: the greeting, and the passkey that lives here. Owner decision,
+ * 29 Sep 2026: "the only way a passkey is taken off a device is if the user
+ * explicitly removes it." There used to be a "Remember me on this device"
+ * checkbox here; unticking it erased the device's record of the passkey — the
+ * one credential that signs documents — as a side effect of signing out. It is
+ * gone, and so is the code path behind it (auth-context's logout removes
+ * session keys only; lib/device-keys.ts lists what it never touches).
  *
- * "Remember me on this device" starts TICKED every time the dialog opens. Keeping
- * the identity is what almost everyone wants and it is the reversible choice;
- * unticking it is a deliberate act, which is what a shared-PC sign-out should be.
- * It is deliberately not remembered between openings — one person unticking it
- * must not make the next person's sign-out forget them.
- *
- * WHAT "FORGET" ACTUALLY REMOVES is in `onSignOutAndForget`'s caller
- * (`forgetDeviceAccount()` in lib/device-account.ts), not here.
+ * The line under the title says so, because people sign out expecting to be
+ * forgotten and then wonder why the screen still greets them. Removing a
+ * passkey is in My security, where it is a deliberate, audited act.
  */
-import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Dialog } from "@/components/ui/dialog";
-import { Checkbox } from "@/components/ui/checkbox";
 
 export function SignOutDialog({
   open,
   onClose,
   onSignOut,
-  onSignOutAndForget,
   busy,
   /** Whose account is being signed out, so the dialog can name them. */
   email,
@@ -34,17 +28,10 @@ export function SignOutDialog({
   open: boolean;
   onClose: () => void;
   onSignOut: () => void;
-  onSignOutAndForget: () => void;
   busy?: boolean;
   email?: string | null;
 }) {
   const { t } = useTranslation();
-  const [remember, setRemember] = useState(true);
-
-  // Re-tick on every opening — see the header.
-  useEffect(() => {
-    if (open) setRemember(true);
-  }, [open]);
 
   return (
     <Dialog
@@ -65,7 +52,7 @@ export function SignOutDialog({
           </button>
           <button
             type="button"
-            onClick={remember ? onSignOut : onSignOutAndForget}
+            onClick={onSignOut}
             disabled={busy}
             className="h-9 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground disabled:opacity-50"
           >
@@ -74,13 +61,7 @@ export function SignOutDialog({
         </>
       }
     >
-      <Checkbox
-        checked={remember}
-        onCheckedChange={setRemember}
-        disabled={busy}
-        label={t("shell.signOutRemember")}
-        hint={t("shell.signOutRememberHint")}
-      />
+      <p className="text-sm text-muted-foreground">{t("shell.signOutKeeps")}</p>
     </Dialog>
   );
 }

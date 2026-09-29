@@ -78,6 +78,11 @@ const REQUIRED = [
   ["tenant", tenantAuth, "POST /auth/refresh", "refresh"],
   ["tenant", tenantAuth, "POST /auth/2fa/verify", "totp"],
   ["tenant", tenantAuth, "POST /auth/pin/login", "pin"],
+  // Setting the Quick PIN compares the current password on a stale session —
+  // the same guessing surface as change-password, limited the same way.
+  ["tenant", tenantAuth, "PUT /auth/pin", "change-password"],
+  // Public, read on every sign-in screen; grants nothing, but is not unlimited.
+  ["tenant", tenantAuth, "GET /auth/device", "device"],
   ["tenant", tenantAuth, "POST /auth/forgot-password", "forgot"],
   ["tenant", tenantAuth, "POST /auth/reset-password", "reset"],
   // Authenticated, but it compares a submitted current password — a stolen
@@ -131,7 +136,9 @@ describe("SEC-C3 — every credential surface is rate limited", () => {
     const WAIVED = new Set([
       // Authenticated device management — already behind authMiddleware, and
       // the caller must hold a valid access token to reach them at all.
-      "POST /auth/pin/register",
+      "GET /auth/pin",
+      "DELETE /auth/pin",
+      // The retired per-device PIN routes, deprecated until their sunset.
       "GET /auth/pin/devices",
       "DELETE /auth/pin/devices/:deviceId",
     ]);

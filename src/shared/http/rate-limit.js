@@ -271,6 +271,14 @@ const webauthnLimiter = makeLimiter({ name: "webauthn", max: 20, failuresOnly: t
  */
 const webauthnOptionsLimiter = makeLimiter({ name: "webauthn-options", max: 300 });
 
+/**
+ * GET /auth/device — read by every sign-in screen before anyone has a token.
+ * It grants nothing and a guess at a 256-bit cookie is hopeless, so this only
+ * has to stop a flood; sized like the passkey options for an office signing in
+ * at once.
+ */
+const deviceLimiter = makeLimiter({ name: "device", max: 300 });
+
 module.exports = {
   initRateLimitStore,
   rateLimitStoreKind,
@@ -286,5 +294,6 @@ module.exports = {
   changePasswordLimiter,
   webauthnLimiter,
   webauthnOptionsLimiter,
+  deviceLimiter,
   TOO_MANY,
 };

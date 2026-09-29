@@ -83,13 +83,13 @@ const signature = zValidate(z.object({ html: z.string().max(20000) }));
 // package's quickPin rule, which the service applies and the My security screen
 // shows as the user types. This file only guards the shape; importing the shared
 // package here would mark it a migrated adapter (check:schemas).
-const pinRegister = zValidate(z.object({
+const pinSet = zValidate(z.object({
   pin: z.string().regex(/^\d{4}$/),
-  label: z.string().max(80).optional().nullable(),
-  replace_device_id: z.string().uuid().optional().nullable(),
   current_password: z.string().min(1).max(512).optional().nullable(),
 }));
-const pinLogin = zValidate(z.object({ email: z.string().trim().email(), device_id: z.string().uuid(), pin: z.string().regex(/^\d{4}$/), keep_signed_in: z.boolean().optional() }));
+// `device_id` is accepted and ignored: a client from before 14230 (the PIN was
+// per device then) still sends one, and must still sign in.
+const pinLogin = zValidate(z.object({ email: z.string().trim().email(), pin: z.string().regex(/^\d{4}$/), device_id: z.string().optional() }));
 
 /*
  * WebAuthn. The attestation and assertion are verified CRYPTOGRAPHICALLY by
@@ -149,7 +149,7 @@ const passkeyLoginVerify = zValidate(z.object({
 
 module.exports = {
   ...passthrough,
-  login, refresh, verifyTotp, totpCode, signature, pinRegister, pinLogin,
+  login, refresh, verifyTotp, totpCode, signature, pinSet, pinLogin,
   passkeyRegisterOptions, passkeyRegisterVerify, passkeyLoginOptions, passkeyLoginVerify,
   avatar, forgotPassword, resetPassword, changePassword,
   create: zValidate(schemas.create),

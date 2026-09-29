@@ -1,14 +1,13 @@
 /**
- * Sign out, and the one question the device now has to ask.
+ * Sign out — one confirm, and the device forgets nothing.
  *
  * What these pin:
- *   · "Remember me on this device" starts ticked, so one click on Sign out is
- *     the plain, reversible sign-out;
- *   · unticking it makes the same button run the OTHER handler — a checkbox
- *     that collects a decision and discards it is worse than no checkbox;
- *   · the tick comes back on every opening, so one person's shared-PC choice
- *     does not leak into the next person's sign-out;
- *   · cancelling runs neither.
+ *   · there is ONE way out of the dialog that signs out, and no checkbox or
+ *     second handler that could make the device forget its person or their
+ *     passkey (owner decision, 29 Sep 2026: only removing the passkey in My
+ *     security takes it off a device);
+ *   · the dialog says so, so nobody signs out expecting to be forgotten;
+ *   · cancelling signs nobody out.
  */
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
@@ -20,31 +19,10 @@ const EMAIL = "ama@acme.cm";
 
 function setup(open = true) {
   const onSignOut = vi.fn();
-  const onSignOutAndForget = vi.fn();
   const onClose = vi.fn();
-  const ui = (o: boolean) => (
-    <SignOutDialog
-      open={o}
-      onClose={onClose}
-      onSignOut={onSignOut}
-      onSignOutAndForget={onSignOutAndForget}
-      email={EMAIL}
-    />
-  );
-  const { rerender } = render(ui(open));
-  return {
-    onSignOut,
-    onSignOutAndForget,
-    onClose,
-    reopen: () => {
-      rerender(ui(false));
-      rerender(ui(true));
-    },
-  };
+  render(<SignOutDialog open={open} onClose={onClose} onSignOut={onSignOut} email={EMAIL} />);
+  return { onSignOut, onClose };
 }
-
-const remember = () =>
-  screen.getByRole("checkbox", { name: /remember me on this device/i });
 
 describe("SignOutDialog", () => {
   it("names the account being signed out", () => {
@@ -52,57 +30,37 @@ describe("SignOutDialog", () => {
     expect(screen.getByText(EMAIL)).toBeInTheDocument();
   });
 
-  it("starts with 'remember me' ticked", () => {
+  it("offers no way to make the device forget — no checkbox at all", () => {
     setup();
-    expect(remember()).toBeChecked();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   });
 
-  it("signs out without forgetting the device by default", async () => {
+  it("says the device still knows you and your passkey stays", () => {
+    setup();
+    expect(screen.getByText(/your passkey stays on it/i)).toBeInTheDocument();
+  });
+
+  it("signs out on the one button", async () => {
     const user = userEvent.setup();
-    const { onSignOut, onSignOutAndForget } = setup();
+    const { onSignOut } = setup();
 
     await user.click(screen.getByRole("button", { name: "Sign out" }));
 
     expect(onSignOut).toHaveBeenCalledTimes(1);
-    expect(onSignOutAndForget).not.toHaveBeenCalled();
-  });
-
-  it("forgets the account when 'remember me' is unticked", async () => {
-    const user = userEvent.setup();
-    const { onSignOut, onSignOutAndForget } = setup();
-
-    await user.click(remember());
-    await user.click(screen.getByRole("button", { name: "Sign out" }));
-
-    expect(onSignOutAndForget).toHaveBeenCalledTimes(1);
-    expect(onSignOut).not.toHaveBeenCalled();
-  });
-
-  it("re-ticks 'remember me' every time it opens", async () => {
-    const user = userEvent.setup();
-    const { reopen } = setup();
-
-    await user.click(remember());
-    expect(remember()).not.toBeChecked();
-    reopen();
-    expect(remember()).toBeChecked();
   });
 
   it("stays signed in when cancelled", async () => {
     const user = userEvent.setup();
-    const { onSignOut, onSignOutAndForget, onClose } = setup();
+    const { onSignOut, onClose } = setup();
 
     await user.click(screen.getByRole("button", { name: "Cancel" }));
 
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onSignOut).not.toHaveBeenCalled();
-    expect(onSignOutAndForget).not.toHaveBeenCalled();
   });
 
   it("does not render while closed", () => {
     setup(false);
-    expect(
-      screen.queryByRole("button", { name: "Sign out" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Sign out" })).not.toBeInTheDocument();
   });
 });

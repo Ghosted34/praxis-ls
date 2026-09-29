@@ -671,8 +671,11 @@ Four rules make it hold together:
    is right when both branches are cheap markup and wrong here: it would mount
    the content twice, put a live focus trap in a phone's accessibility tree and
    give a screen reader two of every heading. `lib/use-media-query.ts` opens with
-   this reasoning. It answers `true` before `matchMedia` resolves, so the first
-   frame is the desktop branch.
+   this reasoning. It asks `matchMedia` on the first render and answers `true`
+   only where there is none (jsdom, SSR). It must not answer a fallback and
+   correct itself in an effect: an effect in the same commit acts on the wrong
+   viewport, and the list's `?focus=` → route exchange did exactly that on a
+   phone — the route handed it back, and the pair bounced forever.
 
    **A CSS wrapper does not hide a PORTAL, which is how this rule gets broken.**
    `<div className="xl:hidden"><Dialog … /></div>` reads like a media query and

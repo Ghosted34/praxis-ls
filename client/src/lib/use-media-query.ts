@@ -16,10 +16,20 @@
  * to the query rather than a one-shot read (a tablet rotating, or a desktop
  * window dragged narrow, has to switch).
  *
- * `fallback` is what to answer before `matchMedia` can be consulted — SSR, and
+ * `fallback` is what to answer where `matchMedia` does not exist — SSR, and
  * jsdom versions that don't implement it. It is a required decision rather than
  * a silent `false`, because the safe default depends on the caller: a desktop
  * modal wants `true`, a mobile-only affordance wants `false`.
+ *
+ * THE FIRST RENDER ASKS `matchMedia`, it does not answer `fallback` and wait
+ * for the effect. `matchMedia` is synchronous — there is nothing to wait for —
+ * and a hook that reported the fallback until its effect ran made every effect
+ * in the same commit act on the wrong viewport. The one that shipped: the
+ * record lists' "a desktop on `?focus=` belongs on the route" exchange, run on
+ * a phone that was a desktop for exactly one commit. The route handed the
+ * phone back to `?focus=`, the remounted list sent it to the route again, and
+ * the costing screen flashed between blank, the list, the sheet and the page
+ * several times a second (`lib/record-360.test.tsx`).
  *
  * Mirrors `use-reduced-motion.ts`, including the Safari <14 `addListener`
  * guard — both listener APIs are feature-checked because jsdom's stub
@@ -27,8 +37,14 @@
  */
 import * as React from "react";
 
+/** The query's answer now, or `fallback` where there is no `matchMedia`. */
+function matchNow(query: string, fallback: boolean): boolean {
+  if (typeof window === "undefined" || !window.matchMedia) return fallback;
+  return window.matchMedia(query).matches;
+}
+
 export function useMediaQuery(query: string, fallback = false): boolean {
-  const [matches, setMatches] = React.useState(fallback);
+  const [matches, setMatches] = React.useState(() => matchNow(query, fallback));
 
   React.useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) return;
@@ -50,9 +66,10 @@ export function useMediaQuery(query: string, fallback = false): boolean {
  * exactly. Stated once here so a screen that branches on "desktop" and the CSS
  * that lays it out cannot disagree about where desktop starts.
  *
- * Defaults to TRUE: the desktop branch is the richer one, and answering "yes"
- * before `matchMedia` resolves means a phone briefly renders the wide view
- * rather than a desktop briefly rendering the phone view.
+ * Defaults to TRUE where there is no `matchMedia` to ask (SSR, jsdom): the
+ * desktop branch is the richer one, and it is what a test that never asked for
+ * a phone has always seen. A real browser gets its real answer on the first
+ * render.
  */
 export const DESKTOP_QUERY = "(min-width: 1024px)";
 
@@ -64,10 +81,10 @@ export const useIsDesktop = (): boolean => useMediaQuery(DESKTOP_QUERY, true);
  * For an EFFECT that acts on the answer — the split screens' "open the first
  * row for the reader", which is right beside a desktop's detail pane and wrong
  * on a phone, where the detail is a full-screen sheet and opening it unasked
- * covers the list the reader came to. The hook cannot answer that safely: on
- * its first render it reports the `true` fallback, and an effect that runs in
- * that same commit (a list served from cache, say) would act on it before the
- * real answer lands. `matchMedia` read at effect time has no such window.
+ * covers the list the reader came to — and for a callback, which has no render
+ * to take the hook's value from. (It was also the workaround for the hook
+ * answering its fallback on the first render; the hook no longer does, so the
+ * two agree from the first commit.)
  *
  * Same fallback as the hook — true where `matchMedia` does not exist (jsdom),
  * so a test that renders a split screen sees the desktop behaviour it always

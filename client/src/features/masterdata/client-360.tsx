@@ -25,6 +25,13 @@ import * as api from "@/lib/masterdata-api";
 import { ClientForm } from "./clients";
 import { PartyDossier } from "./party-360";
 import { MasterDataSettings } from "./master-data-settings";
+import { Modal } from "@/components/ui/modal";
+import { tenant } from "@/lib/api-client";
+import { useCanUseModule } from "@/lib/route-access";
+import {
+  ClientRequestsPanel,
+  type StaffRequest,
+} from "@/features/portal/client-portal-staff";
 
 const shell = pageShell.wide;
 
@@ -33,6 +40,22 @@ export function ClientsPage() {
   const [q, setQ] = React.useState("");
   const [editing, setEditing] = React.useState<api.Client | "new" | null>(null);
   const [settings, setSettings] = React.useState(false);
+  // What clients sent through their portal that is waiting for us — across
+  // every client, so an upload never waits for someone to open the right
+  // client first. It lived on Settings → Client support until client
+  // management moved here.
+  const canClientPortal = useCanUseModule("MOD-29");
+  const [queueOpen, setQueueOpen] = React.useState(false);
+  const toReview = useResource(
+    () =>
+      canClientPortal
+        ? tenant<StaffRequest[]>("/portal/client-requests?status=SUBMITTED")
+        : Promise.resolve([] as StaffRequest[]),
+    [canClientPortal],
+  );
+  const reviewCount = toReview.data?.length ?? 0;
+  // A tenant without the client portal answers FEATURE_DISABLED: no queue then.
+  const showQueue = canClientPortal && !toReview.error;
 
   const rows = React.useMemo(() => clients.data || [], [clients.data]);
   /*
@@ -70,9 +93,21 @@ export function ClientsPage() {
         title={tr("Clients")}
         description="Customer master with a live 360 — compliance, KYC, banks, terms and receivables."
         action={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {showQueue ? (
+              <Button
+                variant="outline"
+                size="sm"
+                icon={null}
+                onClick={() => setQueueOpen(true)}
+                title={tr("Documents and answers clients sent through their portal")}
+              >
+                {tr("To review")}
+                {reviewCount > 0 ? <Pill tone="blue">{String(reviewCount)}</Pill> : null}
+              </Button>
+            ) : null}
             <Button variant="ghost" size="sm" onClick={() => setSettings(true)}>
-              ⚙ Settings
+              ⚙ {tr("Settings")}
             </Button>
             <Button onClick={() => setEditing("new")}>
               {tr("New client")}
@@ -155,6 +190,20 @@ export function ClientsPage() {
         onClose={() => setSettings(false)}
         initialSide="CLIENT"
       />
+      {showQueue ? (
+        <Modal
+          open={queueOpen}
+          onClose={() => {
+            setQueueOpen(false);
+            toReview.reload();
+          }}
+          title={tr("Sent by clients")}
+          description={tr("Documents and answers clients sent through their portal. Accept them, or send them back with a reason.")}
+          size="xl"
+        >
+          <ClientRequestsPanel />
+        </Modal>
+      ) : null}
       <ScreenAi path="master/clients" />
     </section>
   );

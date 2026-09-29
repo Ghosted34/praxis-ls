@@ -256,7 +256,7 @@ const SECTIONS: Section[] = [
       {
         to: "/settings/portal-access",
         label: "Portal Access",
-        desc: "External client, investor & auditor users",
+        desc: "Investor & auditor portal users",
         icon: "id",
       },
       {
@@ -264,12 +264,6 @@ const SECTIONS: Section[] = [
         label: "Auditor data room",
         desc: "Auditor document requests & shared files",
         icon: "doc",
-      },
-      {
-        to: "/settings/client-support",
-        label: "Client support",
-        desc: "Client portal messages & onboarding",
-        icon: "comms",
       },
     ],
   },
@@ -400,7 +394,6 @@ function ChevIcon() {
 const SETTINGS_T: Record<string, { label: string; desc: string }> = {
   "/settings/portal-access": { label: "settings.portalAccess", desc: "settings.portalAccessDesc" },
   "/settings/audit-room": { label: "settings.auditorDataRoom", desc: "settings.auditorDataRoomDesc" },
-  "/settings/client-support": { label: "settings.clientSupport", desc: "settings.clientSupportDesc" },
   "/self-service": { label: "settings.myHr", desc: "settings.myHrDesc" },
 };
 

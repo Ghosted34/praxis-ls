@@ -22,6 +22,10 @@
  *                         POST /portal/users/invite
  *                         POST /portal/users/:id/password
  *                         POST /portal/users/:id/status
+ *   STAFF (MOD-29)        GET/POST /portal/clients/:clientId/people      (Client 360)
+ *                         POST /portal/clients/:clientId/people/:id[/invite|/revoke]
+ *                         GET/POST /portal/clients/:clientId/onboarding[/:stepKey]
+ *                         GET  /portal/settings  (+ invite-defaults, onboarding-steps)
  *
  * feature: null so the public login isn't feature-gated by the module loader.
  */
@@ -31,6 +35,7 @@ const { authMiddleware } = require("../../middleware/auth");
 const { requirePermission } = require("../../middleware/rbac");
 const { portalAuth, portalScope, portalClientAdmin } = require("./portal_auth.middleware");
 const { requireFeature } = require("../../middleware/feature-gate");
+const { deprecate } = require("../../middleware/api-version");
 const { singleFile } = require("../../shared/http/upload.middleware");
 const c = require("./portal_auth.controller");
 // Names match what the write-route validator gate recognises (`controller` /
@@ -243,8 +248,6 @@ router.get("/chat/messages", authMiddleware, requirePermission(INBOX, "view"), p
 router.post("/chat/messages", authMiddleware, requirePermission(INBOX, "edit"), singleFile("file"), v.staffChatSend, pc.staffChatSend);
 router.post("/chat/read", authMiddleware, requirePermission(INBOX, "view"), v.staffChatRead, pc.staffChatRead);
 router.get("/chat/attachments/:attachmentId", authMiddleware, requirePermission(INBOX, "view"), pc.staffChatAttachment);
-router.get("/onboarding", authMiddleware, requirePermission(M, "view"), controller.staffOnboarding);
-router.post("/onboarding/:clientId/:stepKey", authMiddleware, requirePermission(M, "edit"), validator.toggle, controller.staffToggleOnboarding);
 
 // Staff: what we asked clients for, and what they sent (14150). Operations
 // (MOD-29, the client-portal module) asks and reviews; finance (MOD-52,
@@ -261,6 +264,38 @@ router.get("/payment-proofs", authMiddleware, PORTAL_CLIENT, requirePermission("
 router.post("/payment-proofs/:id/confirm", authMiddleware, PORTAL_CLIENT, requirePermission("MOD-52", "create"), v.staffConfirmProof, pc.staffConfirmProof);
 router.post("/payment-proofs/:id/reject", authMiddleware, PORTAL_CLIENT, requirePermission("MOD-52", "edit"), v.staffRejectProof, pc.staffRejectProof);
 router.get("/payment-proofs/:id/file", authMiddleware, PORTAL_CLIENT, requirePermission("MOD-52", "view"), pc.staffProofFile);
+// Retired with Settings → Client support: the onboarding checklist moved to the
+// Client 360 (`/clients/:clientId/onboarding`, MOD-29, below). Kept, deprecated,
+// so a tab still running an older bundle keeps working until it reloads;
+// removed after the sunset.
+const onboardingSunset = deprecate({
+  sunset: "2026-12-31",
+  replacement: "/api/tenant/portal/clients/:clientId/onboarding",
+  reason: "A client's onboarding checklist is managed from the Client 360 since Settings → Client support was retired.",
+});
+router.get("/onboarding", authMiddleware, requirePermission(M, "view"), onboardingSunset, controller.staffOnboarding);
+router.post("/onboarding/:clientId/:stepKey", authMiddleware, requirePermission(M, "edit"), onboardingSunset, validator.toggle, controller.staffToggleOnboarding);
+
+// A client's portal, managed from that client's record (Client 360 → Portal):
+// who at the client can sign in, what each of them sees, and their onboarding
+// checklist. MOD-29 — the team that runs the client portal decides who at a
+// client gets in. Investor and auditor grants stay on MOD-67 (`/portals/access`):
+// they open the tenant's own books, not one client's shipments.
+const CP = (action) => requirePermission("MOD-29", action);
+router.get("/clients/:clientId/people", authMiddleware, PORTAL_CLIENT, CP("view"), pc.staffPeople);
+router.post("/clients/:clientId/people", authMiddleware, PORTAL_CLIENT, CP("create"), v.staffPersonAdd, pc.staffPeopleAdd);
+router.post("/clients/:clientId/people/:id", authMiddleware, PORTAL_CLIENT, CP("edit"), v.staffPersonUpdate, pc.staffPeopleUpdate);
+router.post("/clients/:clientId/people/:id/invite", authMiddleware, PORTAL_CLIENT, CP("edit"), v.empty, pc.staffPeopleResend);
+router.post("/clients/:clientId/people/:id/revoke", authMiddleware, PORTAL_CLIENT, CP("edit"), v.empty, pc.staffPeopleRevoke);
+router.get("/clients/:clientId/onboarding", authMiddleware, PORTAL_CLIENT, CP("view"), pc.staffOnboarding);
+router.post("/clients/:clientId/onboarding/:stepKey", authMiddleware, PORTAL_CLIENT, CP("edit"), v.empty, pc.staffOnboardingToggle);
+// Portal settings that apply to every client — the Clients screen's ⚙: what a
+// new invite sees by default, and the onboarding checklist every client starts from.
+router.get("/settings", authMiddleware, PORTAL_CLIENT, CP("view"), pc.portalSettings);
+router.post("/settings/invite-defaults", authMiddleware, PORTAL_CLIENT, CP("edit"), v.inviteDefaults, pc.saveInviteDefaults);
+router.post("/settings/onboarding-steps", authMiddleware, PORTAL_CLIENT, CP("edit"), v.onboardingStepCreate, pc.createOnboardingStep);
+router.post("/settings/onboarding-steps/:stepKey", authMiddleware, PORTAL_CLIENT, CP("edit"), v.onboardingStepUpdate, pc.updateOnboardingStep);
+router.post("/settings/onboarding-steps/:stepKey/move", authMiddleware, PORTAL_CLIENT, CP("edit"), v.onboardingStepMove, pc.moveOnboardingStep);
 // Finance: share a final invoice's supporting documents with the client in one
 // act (14160). MOD-51 is final invoices — the same grant that issues one.
 router.get("/invoice-bundles/:invoiceId", authMiddleware, PORTAL_CLIENT, requirePermission("MOD-51", "view"), pc.staffInvoiceBundle);

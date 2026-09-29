@@ -575,7 +575,8 @@ export type TeamMember = {
   pending: boolean;
   is_you: boolean;
 };
-export const portalTeam = () => portalApi<{ can_manage: boolean; members: TeamMember[] }>("/client/team");
+export const portalTeam = () =>
+  portalApi<{ can_manage: boolean; default_scope?: TeamMember["access_scope"]; members: TeamMember[] }>("/client/team");
 export const portalInvite = (body: { email: string; full_name?: string; access_scope: Scope; is_client_admin?: boolean }) =>
   portalApi<{ emailed: boolean }>("/client/team", { method: "POST", body });
 export const portalUpdateMember = (id: string, body: { access_scope?: Scope; is_client_admin?: boolean }) =>

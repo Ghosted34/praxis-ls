@@ -75,6 +75,8 @@ const chatFields = {
 };
 const pinBoth = (v) => (v.lat === undefined) === (v.lng === undefined);
 const SCOPES = ["ALL", "OPERATIONS", "BILLING"];
+/** A last day of access, dd/mm/yyyy on screen and ISO on the wire, kept to its end. */
+const accessUntil = isoDate.transform((d) => `${d}T23:59:59.999Z`);
 /** What a client can be told about (14180, portal_notify.service TOPICS). */
 const NOTIFY_TOPICS = ["MESSAGES", "REQUESTS", "BILLING", "PROPOSALS", "SHIPMENTS"];
 
@@ -245,6 +247,33 @@ const schemas = {
     note: z.string().trim().max(1000).optional().nullable(),
   }),
   staffConfirmProof: z.object({ treasury_account_id: z.string().uuid().optional().nullable() }),
+  // A client's portal, managed from the Client 360 (MOD-29). `expires_at` is
+  // the LAST DAY they may sign in, so it is stored as the end of that day.
+  staffPersonAdd: z.object({
+    email: z.string().trim().email().max(254),
+    full_name: z.string().trim().max(120).optional().nullable(),
+    access_scope: z.enum(SCOPES).optional(),
+    is_client_admin: z.boolean().optional().nullable(),
+    expires_at: accessUntil.optional().nullable(),
+    send_invite: z.boolean().optional(),
+  }).strict(),
+  staffPersonUpdate: z.object({
+    access_scope: z.enum(SCOPES).optional(),
+    is_client_admin: z.boolean().optional(),
+    expires_at: accessUntil.nullable().optional(),
+  }).strict(),
+  // Settings for every client (the Clients screen's ⚙).
+  inviteDefaults: z.object({ access_scope: z.enum(SCOPES), first_is_admin: z.boolean() }).strict(),
+  onboardingStepCreate: z.object({
+    label_en: z.string().trim().min(2).max(160),
+    label_fr: z.string().trim().max(160).optional().nullable(),
+  }).strict(),
+  onboardingStepUpdate: z.object({
+    label_en: z.string().trim().min(1).max(160).optional(),
+    label_fr: z.string().trim().min(1).max(160).optional(),
+    is_active: z.boolean().optional(),
+  }).strict().refine((b) => Object.keys(b).length > 0, { message: "Nothing to change" }),
+  onboardingStepMove: z.object({ direction: z.enum(["up", "down"]) }).strict(),
   // An invoice's supporting documents, shared with the client (14160). The
   // service refuses any id that is not on the invoice's own file.
   staffPublishBundle: z.object({ doc_ids: z.array(z.string().uuid()).max(200) }),
@@ -349,6 +378,9 @@ module.exports = {
   staffCreateRequest: mw("staffCreateRequest"), staffReviewRequest: mw("staffReviewRequest"),
   staffConfirmProof: mw("staffConfirmProof"), staffRejectProof: mw("staffRejectProof"),
   staffPublishBundle: mw("staffPublishBundle"),
+  staffPersonAdd: mw("staffPersonAdd"), staffPersonUpdate: mw("staffPersonUpdate"),
+  inviteDefaults: mw("inviteDefaults"), onboardingStepCreate: mw("onboardingStepCreate"),
+  onboardingStepUpdate: mw("onboardingStepUpdate"), onboardingStepMove: mw("onboardingStepMove"),
   chatSend: mw("chatSend"), chatRead: mw("chatRead"), staffChatSend: mw("staffChatSend"), staffChatRead: mw("staffChatRead"),
   proposalDecline: mw("proposalDecline"), proposalSignComplete: mw("proposalSignComplete"), quoteFill: mw("quoteFill"),
   notifySettings: mw("notifySettings"), pushSubscribe: mw("pushSubscribe"), pushUnsubscribe: mw("pushUnsubscribe"),

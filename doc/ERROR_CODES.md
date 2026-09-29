@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 6× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (671)
+## All codes (675)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -53,6 +53,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ALREADY_DISPOSED` | 422 | 1× | — |
 | `ALREADY_EXISTS` | 409 | 2× | — |
 | `ALREADY_GRANTED` | 409 | 1× | — |
+| `ALREADY_HAS_ACCESS` | 409 | 1× | — |
 | `ALREADY_INSTANTIATED` | 409 | 1× | — |
 | `ALREADY_IN_TEAM` | 409 | 1× | — |
 | `ALREADY_MATCHED` | 409 | 1× | — |
@@ -120,7 +121,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_ROLE` | 422 | 2× | — |
 | `BAD_SAVEPOINT` | 500 | 1× | — |
 | `BAD_SCHEME` | 422 | 2× | — |
-| `BAD_SCOPE` | 422 | 2× | — |
+| `BAD_SCOPE` | 422 | 4× | — |
 | `BAD_SEARCH` | 422 | 2× | — |
 | `BAD_SECRET` | 422 | 2× | — |
 | `BAD_SECTION` | — | 1× | — |
@@ -130,6 +131,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_STAGE` | 422 | 2× | — |
 | `BAD_STATE` | 400, 409, 422 | 39× | `BAD_STATUS` |
 | `BAD_STATUS` | 422 | 6× | — |
+| `BAD_STEP` | 422 | 1× | — |
 | `BAD_STORAGE_BUFFER` | 400 | 2× | — |
 | `BAD_STORAGE_KEY` | 400 | 2× | — |
 | `BAD_TARGET` | 422 | 1× | — |
@@ -162,7 +164,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `CERTIFIED_NOT_AVAILABLE` | — | 2× | — |
 | `CLASH_DETECTED` | 409 | 2× | — |
 | `CLASS_MISMATCH` | 422 | 1× | — |
-| `CLIENT_REQUIRED` | 422 | 16× | — |
+| `CLIENT_REQUIRED` | 422 | 17× | — |
 | `CLOSE_BLOCKED` | 422 | 1× | — |
 | `COA_IS_MANAGED` | 422 | 1× | — |
 | `CODE_IN_USE` | 422 | 1× | — |
@@ -207,7 +209,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `DUPLICATE_ORDER` | — | 1× | — |
 | `DUPLICATE_STATEMENT` | — | 1× | — |
 | `DUP_TILE` | 422 | 1× | — |
-| `EMAIL_REQUIRED` | 422 | 2× | — |
+| `EMAIL_REQUIRED` | 422 | 3× | — |
 | `EMAIL_SEND_FAILED` | 502 | 1× | — |
 | `EMAIL_TAKEN` | 409 | 2× | — |
 | `EMPLOYEE_INACTIVE` | 422 | 1× | — |
@@ -288,6 +290,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `INVALID_TOKEN` | 401 | 10× | — |
 | `INVALID_TRANSITION` | 422 | 23× | — |
 | `INVALID_VALUE` | 409, 422 | 13× | — |
+| `INVITE_FAILED` | 502 | 1× | — |
 | `INVOICE_NOT_ISSUED` | 409 | 1× | — |
 | `INVOICE_POSTED` | 422 | 1× | — |
 | `IN_USE` | 409 | 2× | — |
@@ -362,7 +365,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 737× | — |
+| `NOT_FOUND` | 404, 422 | 742× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_ON_THIS_FILE` | 409 | 1× | — |
 | `NOT_OPEN` | 409, 422 | 3× | — |
@@ -464,7 +467,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `OPS_MARKER_TARGET_GONE` | 422 | 1× | — |
 | `ORDER_LOCKED` | 422 | 1× | — |
 | `ORIGIN_MISMATCH` | 400 | 2× | — |
-| `OTHER_COMPANY` | 409 | 1× | — |
+| `OTHER_COMPANY` | 409 | 2× | — |
 | `OTP_COOLDOWN` | 429 | 2× | — |
 | `OTP_EXHAUSTED` | 410 | 1× | — |
 | `OTP_EXPIRED` | 410 | 1× | — |
@@ -618,6 +621,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `SPENT_ON_REQUIRED` | 422 | 1× | — |
 | `STATEMENT_DOES_NOT_FOOT` | 409 | 1× | — |
 | `STEPUP_REQUIRED` | 403 | 1× | — |
+| `STEP_EXISTS` | 409 | 1× | — |
 | `STORAGE_LIMIT` | 413 | 1× | — |
 | `SUBMISSION_BLOCKED` | 422 | 1× | — |
 | `SUMMARY_ALREADY_SENT` | 409 | 2× | — |

@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1813 |
+| Routes | 1825 |
 | Modules mounted | 141 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1813 mounted routes, grouped by path prefix.
+All 1825 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -1635,6 +1635,13 @@ All 1813 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/portal/client/tickets` | — |
 | GET | `/api/tenant/portal/client/tickets/:id` | — |
 | POST | `/api/tenant/portal/client/tickets/:id/replies` | — |
+| GET | `/api/tenant/portal/clients/:clientId/onboarding` | — |
+| POST | `/api/tenant/portal/clients/:clientId/onboarding/:stepKey` | — |
+| GET | `/api/tenant/portal/clients/:clientId/people` | — |
+| POST | `/api/tenant/portal/clients/:clientId/people` | — |
+| POST | `/api/tenant/portal/clients/:clientId/people/:id` | — |
+| POST | `/api/tenant/portal/clients/:clientId/people/:id/invite` | — |
+| POST | `/api/tenant/portal/clients/:clientId/people/:id/revoke` | — |
 | GET | `/api/tenant/portal/data-room` | — |
 | GET | `/api/tenant/portal/data-room/:id` | — |
 | POST | `/api/tenant/portal/data-room/:id/answer` | — |
@@ -1646,12 +1653,17 @@ All 1813 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/portal/me` | — |
 | GET | `/api/tenant/portal/messages` | — |
 | POST | `/api/tenant/portal/messages` | — |
-| GET | `/api/tenant/portal/onboarding` | — |
-| POST | `/api/tenant/portal/onboarding/:clientId/:stepKey` | — |
+| GET | `/api/tenant/portal/onboarding` | yes |
+| POST | `/api/tenant/portal/onboarding/:clientId/:stepKey` | yes |
 | GET | `/api/tenant/portal/payment-proofs` | — |
 | POST | `/api/tenant/portal/payment-proofs/:id/confirm` | — |
 | GET | `/api/tenant/portal/payment-proofs/:id/file` | — |
 | POST | `/api/tenant/portal/payment-proofs/:id/reject` | — |
+| GET | `/api/tenant/portal/settings` | — |
+| POST | `/api/tenant/portal/settings/invite-defaults` | — |
+| POST | `/api/tenant/portal/settings/onboarding-steps` | — |
+| POST | `/api/tenant/portal/settings/onboarding-steps/:stepKey` | — |
+| POST | `/api/tenant/portal/settings/onboarding-steps/:stepKey/move` | — |
 | GET | `/api/tenant/portal/users` | — |
 | POST | `/api/tenant/portal/users` | — |
 | POST | `/api/tenant/portal/users/:id/password` | — |

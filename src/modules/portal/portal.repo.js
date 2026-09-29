@@ -97,13 +97,173 @@ async function onboardingSteps(client, clientId) {
   return rows;
 }
 
-/** Seed the baseline checklist for a client if it has none yet. */
-async function seedOnboarding(client, clientId, defaults) {
-  const { rows } = await client.query(
-    "INSERT INTO client_onboarding_step (client_id, step_key, label_en, label_fr, sort_order) SELECT $1, d.key, d.en, d.fr, d.sort FROM jsonb_to_recordset($2::jsonb) AS d(key text, en text, fr text, sort int) ON CONFLICT (client_id, step_key) DO NOTHING RETURNING 1",
-    [clientId, JSON.stringify(defaults)],
+/**
+ * Bring a client's checklist in line with the tenant's template (14240): add
+ * the active steps it lacks, carry the template's wording and order, and drop
+ * a step the template switched off — only while it is still unticked, because
+ * a ticked step is a record of something that happened for this client.
+ */
+async function syncOnboarding(client, clientId) {
+  await client.query(
+    `INSERT INTO client_onboarding_step (client_id, step_key, label_en, label_fr, sort_order)
+     SELECT $1, t.step_key, t.label_en, t.label_fr, t.sort_order
+       FROM client_onboarding_template t WHERE t.is_active
+     ON CONFLICT (client_id, step_key) DO NOTHING`,
+    [clientId],
   );
-  return rows.length;
+  await client.query(
+    `UPDATE client_onboarding_step s
+        SET label_en = t.label_en, label_fr = t.label_fr, sort_order = t.sort_order
+       FROM client_onboarding_template t
+      WHERE s.client_id = $1 AND s.step_key = t.step_key
+        AND (s.label_en, s.label_fr, s.sort_order) IS DISTINCT FROM (t.label_en, t.label_fr, t.sort_order)`,
+    [clientId],
+  );
+  await client.query(
+    `DELETE FROM client_onboarding_step s
+      USING client_onboarding_template t
+     WHERE s.client_id = $1 AND s.step_key = t.step_key AND NOT t.is_active AND NOT s.done`,
+    [clientId],
+  );
+}
+
+// ── The onboarding template (14240) — the Clients screen's ⚙ Settings ────────
+
+async function onboardingTemplate(client) {
+  const { rows } = await client.query(
+    `SELECT step_key, label_en, label_fr, sort_order, is_active, updated_at
+       FROM client_onboarding_template ORDER BY is_active DESC, sort_order, step_key`,
+  );
+  return rows;
+}
+
+async function insertTemplateStep(client, { stepKey, labelEn, labelFr, sortOrder, actorId }) {
+  const { rows } = await client.query(
+    `INSERT INTO client_onboarding_template (step_key, label_en, label_fr, sort_order, updated_by)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (step_key) DO NOTHING
+     RETURNING step_key, label_en, label_fr, sort_order, is_active, updated_at`,
+    [stepKey, labelEn, labelFr, sortOrder, actorId],
+  );
+  return rows[0] || null;
+}
+
+async function updateTemplateStep(client, stepKey, { labelEn, labelFr, sortOrder, isActive, actorId }) {
+  const { rows } = await client.query(
+    `UPDATE client_onboarding_template
+        SET label_en   = COALESCE($2, label_en),
+            label_fr   = COALESCE($3, label_fr),
+            sort_order = COALESCE($4, sort_order),
+            is_active  = COALESCE($5, is_active),
+            updated_by = $6,
+            updated_at = now()
+      WHERE step_key = $1
+      RETURNING step_key, label_en, label_fr, sort_order, is_active, updated_at`,
+    [stepKey, labelEn ?? null, labelFr ?? null, sortOrder ?? null, typeof isActive === "boolean" ? isActive : null, actorId],
+  );
+  return rows[0] || null;
+}
+
+/** The next free position at the end of the template. */
+async function nextTemplateSort(client) {
+  const { rows } = await client.query("SELECT COALESCE(max(sort_order), 0) + 10 AS n FROM client_onboarding_template");
+  return rows[0] ? Number(rows[0].n) : 10;
+}
+
+// ── Portal settings that apply to every client (section 'portal') ───────────
+
+const PORTAL_SETTING_SECTION = "portal";
+
+async function portalSetting(client, key) {
+  const { rows } = await client.query(
+    "SELECT value FROM setting WHERE section = $1 AND key = $2",
+    [PORTAL_SETTING_SECTION, key],
+  );
+  return rows[0] ? rows[0].value : null;
+}
+
+async function savePortalSetting(client, key, value, actorId) {
+  await client.query(
+    `INSERT INTO setting (section, key, value, updated_by)
+     VALUES ($1, $2, $3::jsonb, $4)
+     ON CONFLICT (section, key) DO UPDATE
+        SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by,
+            updated_at = now(), version = setting.version + 1`,
+    [PORTAL_SETTING_SECTION, key, JSON.stringify(value), actorId],
+  );
+}
+
+// ── A client's portal users, managed from the Client 360 ─────────────────────
+
+const CLIENT_GRANT_COLUMNS = `portal_access_id, subject_email::text AS email, client_id, access_scope,
+            is_client_admin, invited_by_email::text AS invited_by_email, created_at, expires_at`;
+
+/** A client's live CLIENT grants — admins first, then in the order given. */
+async function clientGrants(client, clientId) {
+  const { rows } = await client.query(
+    `SELECT ${CLIENT_GRANT_COLUMNS}
+       FROM portal_access
+      WHERE portal = 'CLIENT' AND client_id = $1 AND is_active
+      ORDER BY is_client_admin DESC, created_at`,
+    [clientId],
+  );
+  return rows;
+}
+
+/** One live CLIENT grant, only when it belongs to this client. */
+async function clientGrant(client, clientId, grantId) {
+  const { rows } = await client.query(
+    `SELECT ${CLIENT_GRANT_COLUMNS}
+       FROM portal_access
+      WHERE portal_access_id = $1 AND client_id = $2 AND portal = 'CLIENT' AND is_active`,
+    [grantId, clientId],
+  );
+  return rows[0] || null;
+}
+
+/**
+ * Any live CLIENT grant this email holds, whichever client it is for, with the
+ * client's name — staff are told WHICH company already has the person.
+ */
+async function liveClientGrantFor(client, email) {
+  const { rows } = await client.query(
+    `SELECT pa.portal_access_id, pa.client_id, cm.name AS client_name
+       FROM portal_access pa
+       LEFT JOIN client_master cm ON cm.client_id = pa.client_id
+      WHERE pa.portal = 'CLIENT' AND pa.subject_email = $1 AND pa.is_active
+        AND (pa.expires_at IS NULL OR pa.expires_at > now())
+      ORDER BY pa.created_at DESC LIMIT 1`,
+    [email],
+  );
+  return rows[0] || null;
+}
+
+/**
+ * Staff change what one person at a client sees, whether they manage the
+ * team, and until when. `setExpiry` false leaves the date alone; true writes
+ * `expiresAt`, where null clears it.
+ */
+async function updateClientGrant(client, { clientId, grantId, scope, isAdmin, setExpiry, expiresAt }) {
+  const { rows } = await client.query(
+    `UPDATE portal_access
+        SET access_scope    = COALESCE($3, access_scope),
+            is_client_admin = COALESCE($4, is_client_admin),
+            expires_at      = CASE WHEN $5 THEN $6::timestamptz ELSE expires_at END
+      WHERE portal_access_id = $1 AND client_id = $2 AND portal = 'CLIENT' AND is_active
+      RETURNING ${CLIENT_GRANT_COLUMNS}`,
+    [grantId, clientId, scope || null, typeof isAdmin === "boolean" ? isAdmin : null, setExpiry === true, expiresAt || null],
+  );
+  return rows[0] || null;
+}
+
+async function revokeClientGrant(client, { clientId, grantId }) {
+  const { rows } = await client.query(
+    `UPDATE portal_access SET is_active = false
+      WHERE portal_access_id = $1 AND client_id = $2 AND portal = 'CLIENT' AND is_active
+      RETURNING ${CLIENT_GRANT_COLUMNS}`,
+    [grantId, clientId],
+  );
+  return rows[0] || null;
 }
 
 async function markOnboardingStep(client, clientId, stepKey, actorUserId) {
@@ -277,4 +437,12 @@ async function auditLedger(client, { from, to, prefixes, limit = 500 }) {
   );
   return rows;
 }
-module.exports = { insertAccess, listAccess, activeFor, revoke, countClientGrants, setTeamRole, clientDossiers, clientDossierChain, clientInvoices, clientInvoiceWithLines, auditLedger, page, clientDocuments, clientDocument, onboardingSteps, seedOnboarding, markOnboardingStep, clientMessages, insertClientMessage, clientQuoteRequests };
+module.exports = {
+  insertAccess, listAccess, activeFor, revoke, countClientGrants, setTeamRole, clientDossiers, clientDossierChain,
+  clientInvoices, clientInvoiceWithLines, auditLedger, page, clientDocuments, clientDocument,
+  onboardingSteps, syncOnboarding, markOnboardingStep,
+  onboardingTemplate, insertTemplateStep, updateTemplateStep, nextTemplateSort,
+  portalSetting, savePortalSetting,
+  clientGrants, clientGrant, liveClientGrantFor, updateClientGrant, revokeClientGrant,
+  clientMessages, insertClientMessage, clientQuoteRequests,
+};

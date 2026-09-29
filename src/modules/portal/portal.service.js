@@ -11,7 +11,7 @@
 
 const repo = require("./portal.repo");
 const events = require("./portal.events");
-const { isGrantUsable } = require("./portal.rules");
+const { isGrantUsable, INVITE_DEFAULTS_KEY, normalizeInviteDefaults, resolveClientAdmin } = require("./portal.rules");
 const report = require("../vault/report/report.service");
 const vault = require("../vault/document_vault/document_vault.service");
 const pdf = require("../../services/pdf.service");
@@ -49,15 +49,19 @@ async function grantAccess(client, { portal, subjectEmail, clientId = null, expi
   // The first person a client is given access through becomes that client's
   // portal admin unless staff say otherwise (14150): somebody on the client's
   // side has to be able to add their colleagues, and the contact staff chose
-  // first is the one they already trust with the account.
+  // first is the one they already trust with the account. Both that and the
+  // default scope are the tenant's to change (⚙ Settings on the Clients screen).
+  const defaults = portal === "CLIENT" ? normalizeInviteDefaults(await repo.portalSetting(client, INVITE_DEFAULTS_KEY)) : null;
   const admin = portal === "CLIENT"
-    ? (isClientAdmin === null || isClientAdmin === undefined
-      ? (await repo.countClientGrants(client, clientId)) === 0
-      : isClientAdmin === true)
+    ? resolveClientAdmin({
+      explicit: isClientAdmin === null || isClientAdmin === undefined ? null : isClientAdmin === true,
+      existingGrants: await repo.countClientGrants(client, clientId),
+      defaults,
+    })
     : false;
   const row = await repo.insertAccess(client, {
     portal, subject_email: String(subjectEmail).toLowerCase(), client_id: clientId, expires_at: expiresAt,
-    ...(portal === "CLIENT" ? { access_scope: accessScope || "ALL", is_client_admin: admin } : {}),
+    ...(portal === "CLIENT" ? { access_scope: accessScope || defaults.access_scope, is_client_admin: admin } : {}),
   });
   await emitEvent(client, { eventTypeKey: events.ACCESS_GRANTED, moduleKey: events.MODULE, entityRef: "portal_access:" + row.portal_access_id, actorUserId: actor.user_id || null, priority: "HIGH" });
   await audit(client, { actorUserId: actor.user_id || null, action: events.ACCESS_GRANTED, moduleKey: events.MODULE, entityRef: "portal_access:" + row.portal_access_id, after: row });
@@ -105,18 +109,15 @@ async function clientDocumentDownload(client, { clientId, docId }) {
 
 // ── Client onboarding command centre (PRD §11.1) ─────────────────────────────
 
-/** The baseline checklist every client starts from. Seeded on first read;
- *  tenants extend per-client later without a migration. */
-const ONBOARDING_DEFAULTS = [
-  { key: "COMPANY_PROFILE", en: "Company profile completed", fr: "Profil d'entreprise complété", sort: 10 },
-  { key: "KYC_DOCUMENTS", en: "KYC documents received", fr: "Documents KYC reçus", sort: 20 },
-  { key: "SERVICE_AGREEMENT", en: "Service agreement signed", fr: "Convention de service signée", sort: 30 },
-  { key: "FIRST_BOOKING", en: "First shipment booked", fr: "Première expédition réservée", sort: 40 },
-];
-
+/**
+ * A client's onboarding checklist. The steps come from the tenant's template
+ * (14240, edited from the Clients screen's ⚙ Settings) and are brought in line
+ * with it on every read — see repo.syncOnboarding for what follows and what
+ * does not.
+ */
 async function clientOnboarding(client, { clientId }) {
   if (!clientId) throw new AppError("CLIENT_REQUIRED", "client_id required", 422);
-  await repo.seedOnboarding(client, clientId, ONBOARDING_DEFAULTS);
+  await repo.syncOnboarding(client, clientId);
   const steps = await repo.onboardingSteps(client, clientId);
   const done = steps.filter((s) => s.done).length;
   return { client_id: clientId, steps, progress: steps.length ? Math.round((done / steps.length) * 100) : 0 };

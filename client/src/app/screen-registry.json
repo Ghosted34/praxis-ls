@@ -274,7 +274,7 @@
       "route": "/master/clients",
       "area": "master",
       "module_key": "MOD-03",
-      "purpose": "Customer master — terms, credit limit and withholding status.",
+      "purpose": "Customer master with a live 360 — terms, credit limit, withholding status, and each client's portal: who at the client can sign in, their onboarding checklist, and what clients sent to review. ⚙ Settings holds what every client shares (invite defaults, onboarding steps).",
       "actions": [
         "list_clients",
         "get_client",
@@ -284,7 +284,16 @@
         "request_client_document",
         "get_client_account_manager",
         "set_client_account_manager",
-        "find_account_manager_candidates"
+        "find_account_manager_candidates",
+        "list_client_requests",
+        "review_client_request",
+        "list_client_portal_people",
+        "change_client_portal_access",
+        "remove_client_portal_access",
+        "get_client_onboarding",
+        "toggle_client_onboarding_step",
+        "get_client_portal_settings",
+        "set_client_invite_defaults"
       ]
     },
     {
@@ -1889,7 +1898,7 @@
       "route": "/settings/portal-access",
       "area": "settings",
       "module_key": "MOD-67",
-      "purpose": "Grant and revoke external client, investor and auditor portal logins.",
+      "purpose": "Grant and revoke investor and auditor portal logins, and preview what each would see. Client portal users are managed on each client (Clients → Portal).",
       "actions": [
         "list_portal_access",
         "client_portal_view",
@@ -1909,18 +1918,6 @@
         "get_audit_room_request",
         "attach_audit_room_document",
         "answer_audit_room_request"
-      ]
-    },
-    {
-      "id": "settings_client_support",
-      "title": "Client support",
-      "route": "/settings/client-support",
-      "area": "settings",
-      "module_key": "MOD-67",
-      "purpose": "The account team's side of the client portal — what clients sent to review, the message thread and onboarding checklist per client.",
-      "actions": [
-        "list_client_requests",
-        "review_client_request"
       ]
     },
     {

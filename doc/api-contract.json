@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 141,
-  "route_count": 1813,
+  "route_count": 1825,
   "tiers": {
     "public": 75,
     "self-scoped": 112,
-    "gated": 1626
+    "gated": 1638
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -3711,6 +3711,18 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/portal/clients/:clientId/onboarding": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/portal/clients/:clientId/people": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/portal/data-room": {
       "auth": true,
       "rbac": true,
@@ -3750,7 +3762,7 @@
     "GET /api/tenant/portal/onboarding": {
       "auth": true,
       "rbac": true,
-      "validated": false,
+      "validated": true,
       "tier": "gated"
     },
     "GET /api/tenant/portal/payment-proofs": {
@@ -3760,6 +3772,12 @@
       "tier": "gated"
     },
     "GET /api/tenant/portal/payment-proofs/:id/file": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/portal/settings": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -8931,6 +8949,36 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/portal/clients/:clientId/onboarding/:stepKey": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/portal/clients/:clientId/people": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/portal/clients/:clientId/people/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/portal/clients/:clientId/people/:id/invite": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/portal/clients/:clientId/people/:id/revoke": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/portal/data-room/:id/answer": {
       "auth": true,
       "rbac": true,
@@ -8964,7 +9012,7 @@
     "POST /api/tenant/portal/onboarding/:clientId/:stepKey": {
       "auth": true,
       "rbac": true,
-      "validated": false,
+      "validated": true,
       "tier": "gated"
     },
     "POST /api/tenant/portal/payment-proofs/:id/confirm": {
@@ -8974,6 +9022,30 @@
       "tier": "gated"
     },
     "POST /api/tenant/portal/payment-proofs/:id/reject": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/portal/settings/invite-defaults": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/portal/settings/onboarding-steps": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/portal/settings/onboarding-steps/:stepKey": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/portal/settings/onboarding-steps/:stepKey/move": {
       "auth": true,
       "rbac": true,
       "validated": false,

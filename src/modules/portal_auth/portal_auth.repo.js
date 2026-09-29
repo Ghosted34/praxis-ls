@@ -102,6 +102,18 @@ async function inviteStatus(client, portalUserId) {
   return rows[0] || null;
 }
 
+/** The newest invite/reset link for each of several logins, in one read. */
+async function latestInvites(client, portalUserIds) {
+  if (!portalUserIds.length) return [];
+  const { rows } = await client.query(
+    `SELECT DISTINCT ON (portal_user_id) portal_user_id, purpose, expires_at, used_at, created_at
+       FROM portal_invite WHERE portal_user_id = ANY($1::uuid[])
+      ORDER BY portal_user_id, created_at DESC`,
+    [portalUserIds],
+  );
+  return rows;
+}
+
 // ── Trusted-device sessions (14150) ─────────────────────────────────────────
 // Only the SHA-256 of a refresh token is stored, same rule as the invite links
 // above: a database read must not hand anyone a working session.
@@ -302,7 +314,7 @@ async function deletePasskey(client, credentialId, portalUserId) {
 
 module.exports = {
   findByEmail, findById, insert, setPassword, setStatus, touchLogin, bumpFailed, list, usersByEmails,
-  createInvite, invalidateInvites, findInviteByHash, markInviteUsed, inviteStatus,
+  createInvite, invalidateInvites, findInviteByHash, markInviteUsed, inviteStatus, latestInvites,
   insertSession, findSessionByRefresh, rotateSession, touchSession, revokeSession,
   revokeSessionByHash, revokeAllSessions, sessionIsLive, listSessions,
   insertLoginCode, retireLoginCodes, latestLoginCode, countRecentLoginCodes,

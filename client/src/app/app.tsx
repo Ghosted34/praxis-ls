@@ -1,7 +1,7 @@
 import { lazy, Suspense } from "react";
 import type { ComponentType } from "react";
 import { useLang } from "@/lib/i18n";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { RequireAuth } from "@/app/auth/require-auth";
 import { useAuth } from "@/app/auth/auth-context";
 import { CommsLive } from "@/features/comms/comms-live";
@@ -94,10 +94,25 @@ const AuditRoomPage = lazyNamed(
   () => import("@/features/portal/data-room"),
   "AuditRoomPage",
 );
-const ClientSupportPage = lazyNamed(
-  () => import("@/features/portal/client-support"),
-  "ClientSupportPage",
-);
+/**
+ * Settings → Client support was retired when client management moved into the
+ * Client 360: a client's onboarding checklist is its Portal tab, the
+ * conversations are Comms › Clients, and every client's uploads waiting for
+ * review are the Clients list's "To review". The staff alert for a client's
+ * message used to link here with `?client=&thread=`, so those two carry over
+ * to the conversation they meant.
+ */
+function ClientSupportRedirect() {
+  const { search } = useLocation();
+  const from = new URLSearchParams(search);
+  const to = new URLSearchParams();
+  for (const k of ["client", "thread"]) {
+    const v = from.get(k);
+    if (v) to.set(k, v);
+  }
+  const q = to.toString();
+  return <Navigate to={`/comms/clients${q ? `?${q}` : ""}`} replace />;
+}
 const SelfServicePage = lazyNamed(
   () => import("@/features/hr/self-service"),
   "SelfServicePage",
@@ -516,9 +531,9 @@ export function App() {
             copy it held was the older one — a wrong page that looked right.
 
             The staff side of the portal is unaffected and stays in this app:
-            /settings/portal-access, /settings/client-support and the audit room
-            are where a member of staff invites portal users, answers their
-            tickets and publishes documents to them. */}
+            a client's portal users and onboarding are its Client 360 (Portal
+            tab), investors and auditors are /settings/portal-access, and the
+            audit room is where staff answer auditors and publish documents. */}
 
             {/* The verification portal. Deliberately NOT under `/public/*`,
             which every other stranger-facing surface uses — and the exception
@@ -766,7 +781,7 @@ export function App() {
                 element={<PortalAccessPage />}
               />
               <Route path="settings/audit-room" element={<AuditRoomPage />} />
-              <Route path="settings/client-support" element={<ClientSupportPage />} />
+              <Route path="settings/client-support" element={<ClientSupportRedirect />} />
               {/* Settings hub cards without a dedicated editor yet */}
               {/* Business setup was a duplicate of the Corporate entities editor (MOD-01) —
             same profile / financial identity / fiscal-year fields. Retired 2026-07-18;

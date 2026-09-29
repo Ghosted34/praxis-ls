@@ -251,7 +251,12 @@ function Team() {
           </button>
         ))
       )}
-      <InviteSheet open={inviting} onClose={() => setInviting(false)} onDone={team.reload} />
+      <InviteSheet
+        open={inviting}
+        defaultScope={team.data?.default_scope ?? "ALL"}
+        onClose={() => setInviting(false)}
+        onDone={team.reload}
+      />
       <MemberSheet m={member} onClose={() => setMember(null)} onDone={team.reload} />
     </Section>
   );
@@ -284,7 +289,18 @@ function ScopeChoice({ value, onChange }: { value: Scope; onChange: (s: Scope) =
   );
 }
 
-function InviteSheet({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
+function InviteSheet({
+  open,
+  defaultScope,
+  onClose,
+  onDone,
+}: {
+  open: boolean;
+  /** What the tenant chose a new colleague sees unless the admin says otherwise. */
+  defaultScope: Scope;
+  onClose: () => void;
+  onDone: () => void;
+}) {
   const { t } = useTranslation();
   const toast = useToast();
   const [email, setEmail] = React.useState("");
@@ -298,10 +314,10 @@ function InviteSheet({ open, onClose, onDone }: { open: boolean; onClose: () => 
     if (!open) return;
     setEmail("");
     setName("");
-    setScope("ALL");
+    setScope(defaultScope);
     setAdmin(false);
     setError(null);
-  }, [open]);
+  }, [open, defaultScope]);
 
   const valid = /^\S+@\S+\.\S+$/.test(email.trim());
 

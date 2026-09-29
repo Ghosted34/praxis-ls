@@ -17,8 +17,11 @@ const places = require("./portal_places.service");
 const notify = require("./portal_notify.service");
 const authService = require("../portal_auth/portal_auth.service");
 const authController = require("../portal_auth/portal_auth.controller");
+const admin = require("./portal_admin.service");
+const portal = require("./portal.service");
 const { readUpload } = require("../../shared/http/upload.middleware");
 const { asyncHandler, AppError } = require("../../utils/errors");
+const { logger } = require("../../config/logger");
 
 const clientId = (req) => {
   const id = req.portal && req.portal.clientId;
@@ -30,6 +33,77 @@ const langOf = (req) => (req.query.lang === "fr" ? "fr" : "en");
 const emailOf = (req) => (req.portal && req.portal.user && req.portal.user.email) || null;
 const slugOf = (req) => (req.tenant && req.tenant.slug) || "tenant";
 const staff = (req) => req.user || { user_id: null };
+
+/**
+ * The client a STAFF route is about, from the path (the Client 360 it was
+ * opened from). Checked as a uuid so a malformed id is a clear 422 rather
+ * than a database error; MOD-29 already lets the caller see every client.
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const staffClientId = (req) => {
+  const id = String(req.params.clientId || "");
+  if (!UUID_RE.test(id)) throw new AppError("CLIENT_REQUIRED", "Open this from a client's record", 422);
+  return id;
+};
+
+/**
+ * Where a person stands on signing in, for the Client 360's list. A grant is
+ * tenant data and the login identity data, so they are read apart and joined
+ * here by email — the key the grant was issued under.
+ *
+ *   ACTIVE          they have signed in (or set their password from the link)
+ *   INVITED         a link is out and still valid
+ *   INVITE_EXPIRED  the link ran out before they used it — resend
+ *   NOT_INVITED     no login exists yet (access given without an email)
+ *   DISABLED        the login itself was switched off
+ */
+function signInState(user, invite, now = Date.now()) {
+  if (!user) return "NOT_INVITED";
+  if (user.status === "DISABLED") return "DISABLED";
+  if (user.last_login_at || (invite && invite.used_at)) return "ACTIVE";
+  if (invite && Date.parse(invite.expires_at) > now) return "INVITED";
+  return invite ? "INVITE_EXPIRED" : "NOT_INVITED";
+}
+
+async function peopleWithLogins(req, grants) {
+  const { users, invites } = await req.identityDb(async (c) => {
+    const found = await authService.usersByEmails(c, grants.map((g) => g.email));
+    return { users: found, invites: await authService.latestInvites(c, found.map((u) => u.portal_user_id)) };
+  });
+  const byEmail = new Map(users.map((u) => [String(u.email).toLowerCase(), u]));
+  const inviteOf = new Map(invites.map((i) => [i.portal_user_id, i]));
+  return grants.map((g) => {
+    const u = byEmail.get(String(g.email).toLowerCase()) || null;
+    const inv = u ? inviteOf.get(u.portal_user_id) || null : null;
+    return {
+      ...g,
+      full_name: (u && u.full_name) || null,
+      last_login_at: (u && u.last_login_at) || null,
+      sign_in: signInState(u, inv),
+      invited_at: (inv && inv.created_at) || null,
+      invite_expires_at: (inv && !inv.used_at && inv.expires_at) || null,
+    };
+  });
+}
+
+/**
+ * Send (or re-send) the set-password link. The grant is already committed by
+ * the time this runs, so a failure is REPORTED, never thrown: rolling back a
+ * grant because a mail server was down is how a client ends up with nobody
+ * able to sign in and no row saying why. The UI offers Resend on the row.
+ */
+async function sendInvite(req, { email, fullName }) {
+  try {
+    const name = await authController.tenantName(req);
+    const origin = await authController.portalLinkOrigin(req);
+    const r = await req.identityDb((c) =>
+      authService.inviteUser(c, { email, fullName, ip: req.ip, origin, tenantName: name }));
+    return { sent: true, emailed: r.emailed === true };
+  } catch (err) {
+    logger.error({ err, email }, "[portal] staff invite failed — the grant stands, the row offers Resend");
+    return { sent: false, emailed: false };
+  }
+}
 
 /** Bytes back to the browser as a download, never rendered inline. */
 function sendFile(res, { buffer, name, type = "application/octet-stream" }) {
@@ -195,13 +269,19 @@ module.exports = {
    * by email — which is also how the grant was issued.
    */
   team: asyncHandler(async (req, res) => {
-    const grants = await req.tenantDb((c) => service.team(c, { clientId: clientId(req) }));
+    const { grants, defaults } = await req.tenantDb(async (c) => ({
+      grants: await service.team(c, { clientId: clientId(req) }),
+      defaults: await admin.inviteDefaults(c),
+    }));
     const users = await req.identityDb((c) => authService.usersByEmails(c, grants.map((g) => g.email)));
     const byEmail = new Map(users.map((u) => [String(u.email).toLowerCase(), u]));
     const self = req.portal.grant && req.portal.grant.portal_access_id;
     res.json({
       data: {
         can_manage: req.portal.grant && req.portal.grant.is_client_admin === true,
+        // The tenant's default for a new colleague (⚙ on the Clients screen),
+        // so an admin's invite starts where staff invites do.
+        default_scope: defaults.access_scope,
         members: grants.map((g) => {
           const u = byEmail.get(String(g.email).toLowerCase());
           return {
@@ -522,4 +602,99 @@ module.exports = {
   staffProofFile: asyncHandler(async (req, res) => {
     sendFile(res, await req.tenantDb((c) => service.proofFile(c, { proofId: req.params.id })));
   }),
+
+  // ── staff: a client's portal, from the Client 360 (MOD-29) ──
+  staffPeople: asyncHandler(async (req, res) => {
+    const cid = staffClientId(req);
+    const { grants, defaults } = await req.tenantDb(async (c) => ({
+      grants: await admin.people(c, { clientId: cid }),
+      defaults: await admin.inviteDefaults(c),
+    }));
+    res.json({ data: { members: await peopleWithLogins(req, grants), defaults } });
+  }),
+  staffPeopleAdd: asyncHandler(async (req, res) => {
+    const cid = staffClientId(req);
+    const b = req.body;
+    const grant = await req.tenantDb((c) =>
+      admin.addPerson(c, {
+        clientId: cid, email: b.email, accessScope: b.access_scope, isClientAdmin: b.is_client_admin,
+        expiresAt: b.expires_at || null, actor: staff(req),
+      }));
+    const invite = b.send_invite === false ? { sent: false, emailed: false } : await sendInvite(req, { email: grant.email, fullName: b.full_name });
+    const [person] = await peopleWithLogins(req, [grant]);
+    res.status(201).json({ data: { ...person, invite } });
+  }),
+  staffPeopleUpdate: asyncHandler(async (req, res) => {
+    const cid = staffClientId(req);
+    const b = req.body;
+    const row = await req.tenantDb((c) =>
+      admin.updatePerson(c, {
+        clientId: cid, grantId: req.params.id, accessScope: b.access_scope, isClientAdmin: b.is_client_admin,
+        expiresAt: Object.prototype.hasOwnProperty.call(b, "expires_at") ? b.expires_at || null : undefined,
+        actor: staff(req),
+      }));
+    const [person] = await peopleWithLogins(req, [row]);
+    res.json({ data: person });
+  }),
+  staffPeopleResend: asyncHandler(async (req, res) => {
+    const cid = staffClientId(req);
+    const grant = await req.tenantDb((c) => admin.personFor(c, { clientId: cid, grantId: req.params.id }));
+    const invite = await sendInvite(req, { email: grant.email });
+    if (!invite.sent) throw new AppError("INVITE_FAILED", "The invitation could not be sent. Try again in a moment.", 502);
+    const [person] = await peopleWithLogins(req, [grant]);
+    res.json({ data: { ...person, invite } });
+  }),
+  staffPeopleRevoke: asyncHandler(async (req, res) => {
+    const cid = staffClientId(req);
+    res.json({ data: await req.tenantDb((c) => admin.revokePerson(c, { clientId: cid, grantId: req.params.id, actor: staff(req) })) });
+  }),
+  staffOnboarding: asyncHandler(async (req, res) => {
+    const cid = staffClientId(req);
+    res.json({ data: await req.tenantDb((c) => portal.clientOnboarding(c, { clientId: cid })) });
+  }),
+  staffOnboardingToggle: asyncHandler(async (req, res) => {
+    const cid = staffClientId(req);
+    res.json({ data: await req.tenantDb((c) => portal.toggleOnboardingStep(c, { clientId: cid, stepKey: req.params.stepKey, actor: staff(req) })) });
+  }),
+
+  // ── staff: portal settings for every client (the Clients screen's ⚙) ──
+  portalSettings: asyncHandler(async (req, res) => {
+    res.json({
+      data: await req.tenantDb(async (c) => ({
+        invite_defaults: await admin.inviteDefaults(c),
+        onboarding_steps: await admin.onboardingTemplate(c),
+      })),
+    });
+  }),
+  saveInviteDefaults: asyncHandler(async (req, res) => {
+    res.json({
+      data: await req.tenantDb((c) =>
+        admin.saveInviteDefaults(c, { accessScope: req.body.access_scope, firstIsAdmin: req.body.first_is_admin, actor: staff(req) })),
+    });
+  }),
+  createOnboardingStep: asyncHandler(async (req, res) => {
+    res.status(201).json({
+      data: await req.tenantDb((c) =>
+        admin.createOnboardingStep(c, { labelEn: req.body.label_en, labelFr: req.body.label_fr, actor: staff(req) })),
+    });
+  }),
+  updateOnboardingStep: asyncHandler(async (req, res) => {
+    const b = req.body;
+    res.json({
+      data: await req.tenantDb((c) =>
+        admin.updateOnboardingStep(c, {
+          stepKey: req.params.stepKey, labelEn: b.label_en, labelFr: b.label_fr, isActive: b.is_active, actor: staff(req),
+        })),
+    });
+  }),
+  moveOnboardingStep: asyncHandler(async (req, res) => {
+    res.json({
+      data: await req.tenantDb((c) =>
+        admin.moveOnboardingStep(c, { stepKey: req.params.stepKey, direction: req.body.direction, actor: staff(req) })),
+    });
+  }),
 };
+
+// Exported for the unit tests: the sign-in state is the one piece of logic
+// here that is not a pass-through.
+module.exports.signInState = signInState;

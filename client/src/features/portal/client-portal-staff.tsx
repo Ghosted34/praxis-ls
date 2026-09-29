@@ -9,12 +9,12 @@
  *   PAYMENT PROOFS  "I have paid" from the client's side. A claim, not money:
  *                 finance (MOD-52) opens the receipt, then confirms — which
  *                 drafts the receipt in Receivables — or rejects with a reason.
- *   TEAM          who at the client can sign in, and what each may see
- *                 (Everything / Shipments & documents / Billing).
+ *   PEOPLE & ONBOARDING  who at the client can sign in, and their checklist —
+ *                 client-portal-people.tsx, composed into the tab below.
  *
  * Used in three places: the Client 360 "Portal" tab (one client), the
  * Receivables page (every client's proofs waiting for finance), and the
- * client-support page (every upload waiting for operations).
+ * Clients list's "To review" queue (every upload waiting for operations).
  */
 import * as React from "react";
 import { tr } from "@/lib/i18n";
@@ -27,14 +27,19 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { DateField } from "@/components/ui/date-field";
 import { Segmented } from "@/components/ui/segmented";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import { useConfirm } from "@/components/ui/use-confirm";
 import { usePrompt } from "@/components/ui/use-prompt";
 import { useToast } from "@/components/ui/toast";
-import { SCOPE_LABEL } from "./portal-scope";
+import { useCanUseModule } from "@/lib/route-access";
+import {
+  ClientOnboarding,
+  ClientPortalPeople,
+  PortalSectionHeader,
+  type ContactSuggestion,
+} from "./client-portal-people";
 
 /* ── shapes (portal_client.service.js requestView / proofView) ──────────── */
 
@@ -602,131 +607,44 @@ function ConfirmProofModal({ proof, onClose, onDone }: { proof: StaffProof | nul
   );
 }
 
-/* ── the client's team ──────────────────────────────────────────────────── */
-
-type Grant = {
-  portal_access_id: string;
-  portal: string;
-  subject_email: string;
-  client_id: string | null;
-  access_scope: "ALL" | "OPERATIONS" | "BILLING" | null;
-  is_client_admin: boolean | null;
-  expires_at: string | null;
-  created_at: string;
-};
-
-
-/** Change what one person at a client may see, and whether they manage the team. */
-export function TeamRoleModal({ grant, onClose, onSaved }: { grant: Grant | null; onClose: () => void; onSaved: () => void }) {
-  const toast = useToast();
-  const [scope, setScope] = React.useState<"ALL" | "OPERATIONS" | "BILLING">("ALL");
-  const [admin, setAdmin] = React.useState(false);
-  const [busy, setBusy] = React.useState(false);
-  React.useEffect(() => {
-    if (!grant) return;
-    setScope(grant.access_scope || "ALL");
-    setAdmin(!!grant.is_client_admin);
-  }, [grant]);
-  if (!grant) return null;
-  async function save() {
-    if (!grant) return;
-    setBusy(true);
-    try {
-      await tenant(`/portals/access/${grant.portal_access_id}/team`, { method: "POST", body: { access_scope: scope, is_client_admin: admin } });
-      toast.success(tr("Access updated."));
-      onSaved();
-      onClose();
-    } catch (e) {
-      toast.error(errMsg(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <Modal
-      open={!!grant}
-      onClose={onClose}
-      title={tr("Portal access")}
-      description={grant.subject_email}
-      footer={
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={onClose}>
-            {tr("Cancel")}
-          </Button>
-          <Button loading={busy} onClick={() => void save()}>
-            {tr("Save")}
-          </Button>
-        </div>
-      }
-    >
-      <div className="grid gap-4">
-        <Field label={tr("What they see")}>
-          <Segmented<"ALL" | "OPERATIONS" | "BILLING">
-            label={tr("What they see")}
-            value={scope}
-            onChange={setScope}
-            options={(["ALL", "OPERATIONS", "BILLING"] as const).map((s) => ({ value: s, label: tr(SCOPE_LABEL[s]) }))}
-          />
-        </Field>
-        <Checkbox checked={admin} onCheckedChange={(v) => setAdmin(v === true)} label={tr("Can invite and manage colleagues")} />
-      </div>
-    </Modal>
-  );
-}
-
-function ClientTeam({ clientId }: { clientId: string }) {
-  const { rows, error, loading, reload } = useList<Grant>("/portals/access?portal=CLIENT");
-  const [editing, setEditing] = React.useState<Grant | null>(null);
-  const mine = (rows || []).filter((g) => g.client_id === clientId);
-  return (
-    <section>
-      {error ? (
-        <ErrorState message={error} />
-      ) : loading && !rows ? (
-        <SkeletonTable />
-      ) : !mine.length ? (
-        <EmptyState title={tr("Nobody at this client has portal access")} hint={tr("Grant access from Settings → Portal access; their admin can then invite colleagues.")} />
-      ) : (
-        <ul className="divide-y rounded-xl border bg-card">
-          {mine.map((g) => (
-            <li key={g.portal_access_id} className="flex flex-wrap items-center gap-3 p-3">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-foreground">{g.subject_email}</p>
-                <div className="mt-1 flex flex-wrap gap-2">
-                  <Pill tone="blue">{tr(SCOPE_LABEL[g.access_scope || "ALL"])}</Pill>
-                  {g.is_client_admin ? <Pill tone="ok">{tr("Admin")}</Pill> : null}
-                  {g.expires_at ? <Pill tone="mute">{`${tr("Until")} ${dateFmt(g.expires_at)}`}</Pill> : null}
-                </div>
-              </div>
-              <Button size="sm" variant="outline" onClick={() => setEditing(g)}>
-                {tr("Change access")}
-              </Button>
-            </li>
-          ))}
-        </ul>
-      )}
-      <TeamRoleModal grant={editing} onClose={() => setEditing(null)} onSaved={reload} />
-    </section>
-  );
-}
-
 /* ── the Client 360 tab ─────────────────────────────────────────────────── */
 
-export function ClientPortalTab({ clientId, dossiers }: { clientId: string; dossiers: { dossier_id: string; ref: string }[] }) {
+export function ClientPortalTab({
+  clientId,
+  dossiers,
+  contacts = [],
+}: {
+  clientId: string;
+  dossiers: { dossier_id: string; ref: string }[];
+  contacts?: ContactSuggestion[];
+}) {
+  // Each section follows its own grant, so nobody meets a panel that only
+  // ever answers 403: people, onboarding and requests are the client portal
+  // (MOD-29); payment claims are receivables (MOD-52).
+  const canPortal = useCanUseModule("MOD-29");
+  const canProofs = useCanUseModule("MOD-52");
   return (
-    <div className="grid gap-6">
-      <div>
-        <h4 className="mb-2 text-sm font-semibold text-foreground">{tr("Documents and information")}</h4>
-        <ClientRequestsPanel clientId={clientId} dossiers={dossiers} />
-      </div>
-      <div>
-        <h4 className="mb-2 text-sm font-semibold text-foreground">{tr("Payments reported")}</h4>
-        <PaymentProofQueue clientId={clientId} />
-      </div>
-      <div>
-        <h4 className="mb-2 text-sm font-semibold text-foreground">{tr("Who can sign in")}</h4>
-        <ClientTeam clientId={clientId} />
-      </div>
+    // `grid-cols-1`, not a bare `grid`: an implicit column is sized `auto`, so
+    // one long unbreakable email grew it past a phone's width and pushed the
+    // Invite button off the screen. minmax(0, 1fr) lets `truncate` do its job.
+    <div className="grid min-w-0 grid-cols-1 gap-6">
+      {/* Full width, one section under another, like every other tab of this
+          360: the people table needs its five columns, and half a pane is a
+          horizontal scroll at any width a desktop actually has. */}
+      {canPortal ? <ClientPortalPeople clientId={clientId} contacts={contacts} /> : null}
+      {canPortal ? <ClientOnboarding clientId={clientId} /> : null}
+      {canPortal ? (
+        <section className="min-w-0">
+          <PortalSectionHeader title={tr("Documents and information")} />
+          <ClientRequestsPanel clientId={clientId} dossiers={dossiers} />
+        </section>
+      ) : null}
+      {canProofs ? (
+        <section className="min-w-0">
+          <PortalSectionHeader title={tr("Payments reported")} />
+          <PaymentProofQueue clientId={clientId} />
+        </section>
+      ) : null}
     </div>
   );
 }

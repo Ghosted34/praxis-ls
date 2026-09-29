@@ -528,10 +528,11 @@ async function acceptInvite(client, { token, password, trust = false, userAgent 
 }
 
 const inviteStatus = (client, portalUserId) => repo.inviteStatus(client, portalUserId);
+const latestInvites = (client, portalUserIds) => repo.latestInvites(client, portalUserIds);
 
 module.exports = {
   login, verifyToken, createUser, setPassword, setStatus, listUsers, usersByEmails, getById,
-  inviteUser, requestReset, acceptInvite, inviteStatus,
+  inviteUser, requestReset, acceptInvite, inviteStatus, latestInvites,
   issueTokens, refresh, logout, listSessions, sessionIsLive, revokeSession, requestCode, verifyCode,
   TRUSTED_SESSION_DAYS,
 };

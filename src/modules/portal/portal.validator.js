@@ -40,6 +40,18 @@ const schemas = {
     thread: z.union([z.literal("general"), z.string().uuid()]).optional(),
     body: z.string().trim().min(1).max(4000),
   }),
+  // A client's portal, managed from the Client 360 (MOD-29).
+  aiClientPersonUpdate: z.object({
+    client_id: z.string().uuid(),
+    portal_access_id: z.string().uuid(),
+    access_scope: z.enum(["ALL", "OPERATIONS", "BILLING"]).optional(),
+    is_client_admin: z.boolean().optional(),
+    // The last day they may sign in (YYYY-MM-DD); null removes the end date.
+    expires_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).transform((d) => `${d}T23:59:59.999Z`).nullable().optional(),
+  }),
+  aiClientPersonRevoke: z.object({ client_id: z.string().uuid(), portal_access_id: z.string().uuid() }),
+  aiOnboardingToggle: z.object({ client_id: z.string().uuid(), step_key: z.string().trim().min(1).max(60) }),
+  aiInviteDefaults: z.object({ access_scope: z.enum(["ALL", "OPERATIONS", "BILLING"]), first_is_admin: z.boolean() }),
   aiRejectProof: z.object({
     payment_proof_id: z.string().uuid(),
     note: z.string().trim().min(1).max(1000),

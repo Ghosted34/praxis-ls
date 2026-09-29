@@ -60,8 +60,15 @@ describe("the team's side of the client chat", () => {
   });
 
   it("leaves the rest of client support where it was", () => {
-    expect(gateOn(portal, "get", "/onboarding")).toEqual([["MOD-67", "view"]]);
     expect(gateOn(portal, "get", "/messages")).toEqual([["MOD-67", "view"]]);
+  });
+
+  it("moved the onboarding checklist to the client's record, under the client portal's grant", () => {
+    // Settings → Client support was retired; the checklist lives in the
+    // Client 360's Portal tab (client-360-portal-routes.test.js has the rest).
+    expect(gateOn(portal, "get", "/clients/:clientId/onboarding")).toEqual([["MOD-29", "view"]]);
+    // The old address stays, deprecated, for a tab on an older bundle.
+    expect(gateOn(portal, "get", "/onboarding")).toEqual([["MOD-67", "view"]]);
   });
 });
 

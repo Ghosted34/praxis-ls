@@ -22,9 +22,11 @@ import { useToast } from "@/components/ui/toast";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { enumLabel } from "@/lib/format";
 import * as api from "@/lib/masterdata-api";
+import { useCanUseModule } from "@/lib/route-access";
+import { ClientPortalSettings } from "@/features/portal/client-portal-settings";
 
 type Side = "CLIENT" | "SUPPLIER";
-const SECTIONS = ["Required fields", "Categories", "Document types"] as const;
+const SECTIONS = ["Required fields", "Categories", "Document types", "Client portal"] as const;
 type Section = (typeof SECTIONS)[number];
 
 /* ── Field-requirement config ──────────────────────────────────────────────── */
@@ -359,6 +361,12 @@ export function MasterDataSettings({
 }) {
   const [side, setSide] = React.useState<Side>(initialSide);
   const [section, setSection] = React.useState<Section>("Required fields");
+  // The client portal's settings for every client (who a new invite sees, the
+  // onboarding checklist) — Clients side only, and only for the people who
+  // run the client portal (MOD-29).
+  const canClientPortal = useCanUseModule("MOD-29");
+  const sections = SECTIONS.filter((x) => x !== "Client portal" || (side === "CLIENT" && canClientPortal));
+  const shown: Section = sections.includes(section) ? section : "Required fields";
   if (!open) return null;
 
   return (
@@ -366,7 +374,7 @@ export function MasterDataSettings({
       open
       onClose={onClose}
       title="Master data settings"
-      description="Per-tenant field requirements, categories and KYC document types."
+      description="Settings for every client or supplier: required fields, categories, KYC document types and the client portal."
       // `xl` so the registry tables get real width on desktop; on narrow
       // windows the tables fall back to horizontal scroll (see wrappers below).
       size="xl"
@@ -385,15 +393,15 @@ export function MasterDataSettings({
       </div>
       <SectionTabs
         label="Master data sections"
-        value={section}
+        value={shown}
         onChange={setSection}
         className="mb-4"
-        tabs={SECTIONS.map((s) => ({ value: s, label: s }))}
+        tabs={sections.map((s) => ({ value: s, label: tr(s) }))}
       />
 
       <div className="max-h-[60vh] overflow-auto pr-1">
-        {section === "Required fields" && <FieldConfigEditor side={side} />}
-        {section === "Categories" &&
+        {shown === "Required fields" && <FieldConfigEditor side={side} />}
+        {shown === "Categories" &&
           (side === "CLIENT" ? (
             <RegistryManager
               title="Client categories"
@@ -433,7 +441,8 @@ export function MasterDataSettings({
               }
             />
           ))}
-        {section === "Document types" && (
+        {shown === "Client portal" && <ClientPortalSettings />}
+        {shown === "Document types" && (
           <RegistryManager
             title="KYC document types"
             activation

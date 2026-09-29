@@ -1,57 +1,78 @@
 /**
- * Portal access — manage external read-access grants (Client / Investor
- * / Auditor) and preview the exact scope each grantee would see. The external
- * data views are feature-gated (portal.client / portal.investor / portal.audit);
+ * Portal access — the INVESTOR and AUDITOR portals: grant and revoke their
+ * read-access, and preview the exact scope each grantee would see. The
+ * external data views are feature-gated (portal.investor / portal.audit);
  * previews degrade gracefully when a flag is off.
+ *
+ * The CLIENT portal is not managed here any more. Who at a client can sign in
+ * is part of the client — Client 360 → Portal, under the client portal's own
+ * grant (MOD-29) — so this screen lists which clients have portal users and
+ * links to each one rather than offering a second place to change them.
+ * Investors and auditors stay here, on the IAM grant (MOD-67): they open the
+ * tenant's own books, not one client's shipments.
  *
  * Shared primitives from components/ui/*; AI panel gated globally.
  */
 import { pageShell } from "@/lib/layout";
-import { tr } from "@/lib/i18n";
+import { tr, tv } from "@/lib/i18n";
 import * as React from "react";
+import { Link } from "react-router-dom";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { DateField } from "@/components/ui/date-field";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb } from "@/components/tabbed-hub";
 import { Input } from "@/components/ui/input";
-import { Modal, Field, Select } from "@/components/ui/modal";
+import { Modal, Field } from "@/components/ui/modal";
+import { Checkbox, RadioGroup } from "@/components/ui/checkbox";
+import { Pill } from "@/components/ui/pill";
+import { MoreMenu } from "@/components/ui/more-menu";
+import { DropdownItem } from "@/components/ui/dropdown-menu";
+import { Callout } from "@/components/ui/callout";
 import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
+import { useConfirm } from "@/components/ui/use-confirm";
+import { useToast } from "@/components/ui/toast";
+import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
+import { RowActions } from "@/components/ui/row-actions";
+import { ResponsiveList, RecordCard } from "@/components/ui/responsive-list";
 import { AiActions } from "@/components/ai-actions";
 import type { AiAction } from "@/features/scaffold/screen-specs";
 import { errMsg, useList, useRefresh, type Row } from "@/lib/use-resource";
-import { cell, dateFmt } from "@/lib/format";
-import { SearchSelect } from "@/components/ui/search-select";
+import { cell, dateFmt, todayISO } from "@/lib/format";
+import { useIsCompact } from "@/lib/use-media-query";
 import { DataView } from "@/components/ui/data-view";
-import { TeamRoleModal } from "@/features/portal/client-portal-staff";
-import { SCOPE_LABEL, type PortalScope } from "@/features/portal/portal-scope";
 
 const PORTAL_AI: AiAction[] = [
   {
     label: "Review access",
     kind: "read",
     describe:
-      "Summarise who currently has portal access and when grants expire.",
+      "Summarise who currently has investor or auditor portal access and when grants expire.",
   },
 ];
 
-const PORTALS = ["CLIENT", "INVESTOR", "AUDITOR"];
+type ExternalPortal = "INVESTOR" | "AUDITOR";
+const PORTAL_LABEL: Record<ExternalPortal, string> = { INVESTOR: "Investor", AUDITOR: "Auditor" };
+const PORTAL_HINT: Record<ExternalPortal, string> = {
+  INVESTOR: "Board view — key figures and financial statements",
+  AUDITOR: "Read-only records, the ledger trail and the data room",
+};
+
+const clientPortalHref = (clientId: string) =>
+  `/master/clients?focus=${encodeURIComponent(clientId)}&tab=Portal`;
 
 function GrantModal({
   open,
-  clients,
   onClose,
   onSaved,
 }: {
   open: boolean;
-  clients: Row[] | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [portal, setPortal] = React.useState("CLIENT");
+  const [portal, setPortal] = React.useState<ExternalPortal>("AUDITOR");
   const [email, setEmail] = React.useState("");
-  const [clientId, setClientId] = React.useState("");
   const [expiresAt, setExpiresAt] = React.useState("");
   const [invite, setInvite] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
@@ -60,9 +81,8 @@ function GrantModal({
 
   React.useEffect(() => {
     if (!open) return;
-    setPortal("CLIENT");
+    setPortal("AUDITOR");
     setEmail("");
-    setClientId("");
     setExpiresAt("");
     setInvite(true);
     setError(null);
@@ -70,10 +90,6 @@ function GrantModal({
   }, [open]);
 
   async function submit() {
-    if (portal === "CLIENT" && !clientId) {
-      setError("A CLIENT portal grant needs a client to scope it to.");
-      return;
-    }
     setBusy(true);
     setError(null);
     try {
@@ -82,22 +98,15 @@ function GrantModal({
         body: {
           portal,
           subject_email: email.trim(),
-          client_id: portal === "CLIENT" ? clientId : undefined,
-          expires_at: expiresAt ? new Date(expiresAt).toISOString() : undefined,
+          // The LAST day of access, kept to its end rather than its first instant.
+          expires_at: expiresAt ? `${expiresAt}T23:59:59.999Z` : undefined,
         },
       });
 
-      // Create the LOGIN as well, not just the grant.
-      //
-      // Until 2026-08-02 this screen stopped at the line above — and a grant on
-      // its own is unusable, because `portal_access` is keyed by email while the
-      // credentials live in `portal_user`, which nothing ever created. Every
-      // grant issued before today points at somebody who cannot sign in.
-      //
-      // Sent as a SEPARATE, non-fatal step: the grant is the record that matters
-      // and must not be rolled back because an SMTP server was down. If the
-      // invite fails we say so and offer "Resend" on the row, rather than
-      // reporting success and leaving staff to discover it from the client.
+      // Create the LOGIN as well, not just the grant: `portal_access` is keyed
+      // by email while the credentials live in `portal_user`, so a grant on its
+      // own lets nobody in. A SEPARATE, non-fatal step — the grant must not be
+      // rolled back because an SMTP server was down; the row offers Resend.
       let problem: string | null = null;
       if (invite) {
         try {
@@ -106,15 +115,13 @@ function GrantModal({
             body: { email: email.trim() },
           });
           if (!r.emailed)
-            problem =
-              "Access granted, but the invitation email could not be sent. Use Resend on the row.";
+            problem = tr("Access granted, but the invitation email could not be sent. Use Resend on the row.");
         } catch (e) {
-          problem = `Access granted, but the invitation could not be sent (${errMsg(e)}). Use Resend on the row.`;
+          problem = tv("Access granted, but the invitation could not be sent ({{why}}). Use Resend on the row.", { why: errMsg(e) });
         }
       }
       onSaved();
-      // Held open on a problem so the message is actually read — closing the
-      // modal on a partial success is how the gap stayed invisible before.
+      // Held open on a problem so the message is actually read.
       setNotice(problem);
       if (!problem) onClose();
     } catch (e) {
@@ -124,99 +131,63 @@ function GrantModal({
     }
   }
 
-  const clientLabel = (() => {
-    const c = (clients || []).find((x) => String(x.client_id) === clientId);
-    return c ? cell(c.name ?? c.legal_name) : null;
-  })();
-
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title="Grant portal access"
-      description="Give an external party a scoped, read-only view."
-      size="lg"
+      title={tr("Grant portal access")}
+      description={tr("Give an investor or an auditor a scoped, read-only view.")}
+      footer={
+        <div className="flex w-full flex-col-reverse gap-2 sm:w-auto sm:flex-row">
+          <Button variant="outline" onClick={onClose} disabled={busy} className="w-full sm:w-auto">
+            {notice ? tr("Close") : tr("Cancel")}
+          </Button>
+          <Button onClick={() => void submit()} loading={busy} disabled={!email.trim() || busy} className="w-full sm:w-auto">
+            {tr("Grant access")}
+          </Button>
+        </div>
+      }
     >
-      <div className="space-y-4">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Portal" required>
-            <Select value={portal} onChange={(e) => setPortal(e.target.value)}>
-              {PORTALS.map((p) => (
-                <option key={p} value={p}>
-                  {p.charAt(0) + p.slice(1).toLowerCase()}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Subject email" required>
-            <Input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="cfo@acme.cm"
-            />
-          </Field>
-          {portal === "CLIENT" && (
-            <Field
-              label="Client scope"
-              hint="They only ever see this client"
-              required
-            >
-              <SearchSelect
-                path="/clients"
-                value={clientLabel}
-                placeholder={tr("Search clients…")}
-                getLabel={(c) => cell(c.name ?? c.legal_name)}
-                getKey={(c) => String(c.client_id)}
-                onSelect={(c) => setClientId(String(c.client_id))}
-              />
-            </Field>
-          )}
-          <Field label="Expires at" hint="Optional — recommended for auditors">
-            <DateField
-              value={expiresAt}
-              onChange={setExpiresAt}
-            />
-          </Field>
-        </div>
-
-        {/* A grant without a login is unusable — portal_access is keyed by email
-            and the credentials live in portal_user. On by default for that
-            reason; turn it off only when the person already has a sign-in. */}
-        <label className="flex items-start gap-2 text-sm text-foreground">
-          <input
-            type="checkbox"
-            className="mt-0.5"
-            checked={invite}
-            onChange={(e) => setInvite(e.target.checked)}
+      <div className="grid gap-4">
+        <Field label={tr("Portal")} required>
+          <RadioGroup
+            aria-label={tr("Portal")}
+            value={portal}
+            onValueChange={(v) => setPortal(v as ExternalPortal)}
+            options={(["AUDITOR", "INVESTOR"] as const).map((p) => ({
+              value: p,
+              label: tr(PORTAL_LABEL[p]),
+              hint: tr(PORTAL_HINT[p]),
+            }))}
+            className="rounded-xl border bg-card p-3"
           />
-          <span>
-            Email them a link to set a password
-            <span className="block text-xs text-muted-foreground">
-              Without a sign-in, a grant alone doesn't let anyone in. Leave this
-              on unless they already have one.
-            </span>
-          </span>
-        </label>
-
+        </Field>
+        <Field label={tr("Email")} required>
+          <Input
+            type="email"
+            inputMode="email"
+            autoComplete="off"
+            autoCapitalize="none"
+            spellCheck={false}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="cfo@acme.cm"
+          />
+        </Field>
+        <Field label={tr("Last day of access")} hint={tr("Optional — recommended for auditors.")}>
+          <DateField value={expiresAt} onChange={setExpiresAt} min={todayISO()} />
+        </Field>
+        <Checkbox
+          checked={invite}
+          onCheckedChange={setInvite}
+          label={tr("Email them a link to set a password")}
+          hint={tr("Without a sign-in, a grant alone doesn't let anyone in. Leave this on unless they already have one.")}
+        />
+        <Callout tone="info">
+          {tr("Client portal users are invited from the client's own record: Clients → the client → Portal.")}
+        </Callout>
         {error && <ErrorState message={error} />}
-        {notice && (
-          <div className="rounded-lg border border-[rgb(var(--warn))]/40 bg-[rgb(var(--warn))]/10 p-3 text-sm text-foreground">
-            {notice}
-          </div>
-        )}
-        <div className="flex justify-end gap-2 pt-2">
-          <Button variant="outline" onClick={onClose} disabled={busy}>
-            {notice ? "Close" : "Cancel"}
-          </Button>
-          <Button
-            onClick={submit}
-            loading={busy}
-            disabled={!email.trim() || busy}
-          >
-            Grant access
-          </Button>
-        </div>
+        {notice && <Callout tone="warn">{notice}</Callout>}
       </div>
     </Modal>
   );
@@ -257,41 +228,42 @@ function PreviewModal({
       open={open}
       onClose={onClose}
       title={title}
-      description="Exactly what this grantee would see."
+      description={tr("Exactly what this grantee would see.")}
       size="xl"
+      footer={
+        <Button variant="outline" onClick={onClose}>
+          {tr("Close")}
+        </Button>
+      }
     >
-      <div className="space-y-4">
-        {error ? (
-          gated ? (
-            <EmptyState
-              title="This portal view isn't enabled"
-              hint="The portal.* feature flag for this view is off. Enable it to preview the external scope."
-            />
-          ) : (
-            <ErrorState message={error} />
-          )
-        ) : data === undefined ? (
-          <LoadingRow label="Loading scope…" />
-        ) : (
-          <DataView
-            data={data}
-            emptyTitle="This grantee would see nothing here"
-            emptyHint="The scope resolves to no records — check the grant's client and date range."
-            className="max-h-96 overflow-auto"
+      {error ? (
+        gated ? (
+          <EmptyState
+            title={tr("This portal view isn't enabled")}
+            hint={tr("The portal feature for this view is off. Enable it to preview the external scope.")}
           />
-        )}
-        <div className="flex justify-end">
-          <Button variant="outline" onClick={onClose}>
-            Close
-          </Button>
-        </div>
-      </div>
+        ) : (
+          <ErrorState message={error} />
+        )
+      ) : data === undefined ? (
+        <LoadingRow label={tr("Loading scope…")} />
+      ) : (
+        <DataView
+          data={data}
+          emptyTitle={tr("This grantee would see nothing here")}
+          emptyHint={tr("The scope resolves to no records — check the grant's date range.")}
+          className="max-h-96 overflow-auto"
+        />
+      )}
     </Modal>
   );
 }
 
 export function PortalAccessPage() {
   const reload = useRefresh();
+  const toast = useToast();
+  const compact = useIsCompact();
+  const [confirm, confirmDialog] = useConfirm();
   const { rows, error } = useList("/portals/access");
   const { rows: clients } = useList("/clients");
   // Logins, so a grant can say whether the person can actually sign in. Matched
@@ -300,73 +272,85 @@ export function PortalAccessPage() {
   // join is exactly the trap that broke TEST-mode writes for fourteen sessions.
   const { rows: portalUsers } = useList("/portal/users");
   const [grantOpen, setGrantOpen] = React.useState(false);
-  const [preview, setPreview] = React.useState<{
-    title: string;
-    path: string;
-  } | null>(null);
+  const [preview, setPreview] = React.useState<{ title: string; path: string } | null>(null);
   const [rowBusy, setRowBusy] = React.useState<string | null>(null);
-  const [rowError, setRowError] = React.useState<string | null>(null);
-  const [rowNotice, setRowNotice] = React.useState<string | null>(null);
-  const [teamGrant, setTeamGrant] = React.useState<Row | null>(null);
 
   const clientName = React.useMemo(
-    () =>
-      new Map(
-        (clients || []).map((c) => [
-          String(c.client_id),
-          cell(c.name ?? c.legal_name),
-        ]),
-      ),
+    () => new Map((clients || []).map((c) => [String(c.client_id), cell(c.name ?? c.legal_name)])),
     [clients],
   );
   const loginByEmail = React.useMemo(
-    () =>
-      new Map(
-        (portalUsers || []).map((u) => [
-          String(u.email || "").toLowerCase(),
-          u,
-        ]),
-      ),
+    () => new Map((portalUsers || []).map((u) => [String(u.email || "").toLowerCase(), u])),
     [portalUsers],
   );
+
+  const external = (rows || []).filter((g) => g.portal !== "CLIENT");
+  /** What a grant's row says about signing in. A grant with no portal_user is a
+   *  grant nobody can use — surfaced because it is invisible otherwise. */
+  const grantState = (g: Row) => {
+    const email = String(g.subject_email || "").toLowerCase();
+    const login = loginByEmail.get(email);
+    const lastLogin = login && login.last_login_at ? String(login.last_login_at) : null;
+    return {
+      id: String(g.portal_access_id),
+      email,
+      portal: String(g.portal) as ExternalPortal,
+      login,
+      lastLogin,
+      expired: !!g.expires_at && Date.parse(String(g.expires_at)) < Date.now(),
+      signIn: !login
+        ? { tone: "warn" as const, label: tr("No sign-in yet") }
+        : !lastLogin
+          ? { tone: "blue" as const, label: tr("Invitation sent") }
+          : null,
+    };
+  };
+  // Which clients have portal users — a count and a way in, never the controls.
+  const clientCounts = React.useMemo(() => {
+    const m = new Map<string, number>();
+    for (const g of rows || []) {
+      if (g.portal === "CLIENT" && g.client_id) m.set(String(g.client_id), (m.get(String(g.client_id)) ?? 0) + 1);
+    }
+    return [...m.entries()]
+      .map(([id, n]) => ({ id, n, name: clientName.get(id) ?? tr("Client") }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [rows, clientName]);
 
   /** Create-or-find the login and (re)send the set-password link. */
   async function invite(email: string) {
     setRowBusy(email);
-    setRowError(null);
-    setRowNotice(null);
     try {
-      const r = await tenant<{ emailed: boolean; created: boolean }>(
-        "/portal/users/invite",
-        {
-          method: "POST",
-          body: { email },
-        },
-      );
-      setRowNotice(
-        r.emailed
-          ? `Invitation sent to ${email}.`
-          : `Login ready for ${email}, but the email could not be sent — check the SMTP settings and resend.`,
-      );
+      const r = await tenant<{ emailed: boolean; created: boolean }>("/portal/users/invite", {
+        method: "POST",
+        body: { email },
+      });
+      if (r.emailed) toast.success(tv("Invitation sent to {{email}}.", { email }));
+      else toast.error(tv("Login ready for {{email}}, but the email could not be sent — check the mail settings and resend.", { email }));
       reload();
     } catch (e) {
-      setRowError(errMsg(e));
+      toast.error(errMsg(e));
     } finally {
       setRowBusy(null);
     }
   }
 
-  async function revoke(id: string) {
+  async function revoke(g: Row) {
+    const email = String(g.subject_email || "");
+    const ok = await confirm({
+      title: tv("Remove {{name}}'s access?", { name: email }),
+      body: tr("They can no longer open this portal. You can grant access again later."),
+      confirmLabel: tr("Remove access"),
+      destructive: true,
+    });
+    if (!ok) return;
+    const id = String(g.portal_access_id);
     setRowBusy(id);
-    setRowError(null);
     try {
-      await tenant(`/portals/access/${id}/revoke`, {
-        method: "POST",
-        body: {},
-      });
+      await tenant(`/portals/access/${id}/revoke`, { method: "POST", body: {} });
+      toast.success(tv("{{name}} no longer has access.", { name: email }));
       reload();
     } catch (e) {
-      setRowError(errMsg(e));
+      toast.error(errMsg(e));
     } finally {
       setRowBusy(null);
     }
@@ -375,178 +359,208 @@ export function PortalAccessPage() {
   return (
     <section className={pageShell.wide}>
       <PageHeader
-        eyebrow={<HubCrumb area="Portal" to="/settings/portal-access" />}
-        title="Portal access"
-        description="Grant and revoke external read-access — client, investor and auditor portals."
+        eyebrow={<HubCrumb area="Settings" to="/settings" />}
+        title={tr("Portal access")}
+        description={tr("Investors and auditors: who can open their portal, and until when. Client portal users are managed on each client.")}
         action={
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={() =>
-                setPreview({
-                  title: "Investor portal preview",
-                  path: "/portals/investor",
-                })
-              }
-            >
-              Preview investor
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() =>
-                setPreview({
-                  title: "Auditor portal preview",
-                  path: "/portals/auditor",
-                })
-              }
-            >
-              Preview auditor
-            </Button>
-            <Button onClick={() => setGrantOpen(true)}>Grant access</Button>
-          </div>
+          compact ? (
+            // Three header buttons do not fit a phone's width; the primary one
+            // stays, the two previews go behind ⋯ (FRONTEND_GUIDE §3.16).
+            <div className="flex items-center gap-2">
+              <Button onClick={() => setGrantOpen(true)}>{tr("Grant access")}</Button>
+              <MoreMenu label={tr("More portal actions")}>
+                <DropdownItem onSelect={() => setPreview({ title: tr("Investor portal preview"), path: "/portals/investor" })}>
+                  {tr("Preview investor")}
+                </DropdownItem>
+                <DropdownItem onSelect={() => setPreview({ title: tr("Auditor portal preview"), path: "/portals/auditor" })}>
+                  {tr("Preview auditor")}
+                </DropdownItem>
+              </MoreMenu>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" onClick={() => setPreview({ title: tr("Investor portal preview"), path: "/portals/investor" })}>
+                {tr("Preview investor")}
+              </Button>
+              <Button variant="outline" onClick={() => setPreview({ title: tr("Auditor portal preview"), path: "/portals/auditor" })}>
+                {tr("Preview auditor")}
+              </Button>
+              <Button onClick={() => setGrantOpen(true)}>{tr("Grant access")}</Button>
+            </div>
+          )
         }
       />
-
-      {rowError && (
-        <div className="mb-3">
-          <ErrorState message={rowError} />
-        </div>
-      )}
-      {rowNotice && (
-        <div className="mb-3 rounded-lg border border-border bg-card p-3 text-sm text-muted-foreground">
-          {rowNotice}
-        </div>
-      )}
 
       {error ? (
         <ErrorState message={error} />
       ) : rows === null ? (
         <SkeletonTable />
-      ) : rows.length === 0 ? (
-        <EmptyState
-          title="No active grants"
-          hint="Grant a client, investor or auditor scoped read-access to get started."
-        />
       ) : (
-        <div className="space-y-2">
-          {rows.map((g) => {
-            const id = String(g.portal_access_id);
-            const portal = String(g.portal);
-            const email = String(g.subject_email || "").toLowerCase();
-            // A grant with no portal_user is a grant nobody can use. Surfaced on
-            // the row because it is invisible otherwise — the failure only shows
-            // up as a client saying "your link doesn't work".
-            const login = loginByEmail.get(email);
-            const signedInBefore = !!(login && login.last_login_at);
-            return (
-              <div
-                key={id}
-                className="lux-card flex flex-wrap items-center gap-3 p-3"
+        // Side by side only where the grants table keeps its six columns on
+        // one line each (2xl); below that the client list goes under it.
+        <div className="grid grid-cols-1 gap-6 2xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] 2xl:items-start">
+          <section className="min-w-0">
+            <h2 className="mb-2 text-sm font-semibold text-foreground">{tr("Investors and auditors")}</h2>
+            {external.length === 0 ? (
+              <EmptyState
+                title={tr("No investor or auditor has access")}
+                hint={tr("Grant an auditor a time-boxed, read-only view, or an investor the board figures.")}
+              />
+            ) : (
+              /* A list screen's table on a desktop — the shared Table, whose
+                 rows follow the user's density and whose RowActions hold the
+                 buttons to the row's height — and a card per grant on a phone. */
+              <ResponsiveList
+                items={external}
+                renderItem={(g) => {
+                  const st = grantState(g);
+                  return (
+                    <RecordCard
+                      title={cell(g.subject_email)}
+                      pills={
+                        <>
+                          <Pill tone="blue">{tr(PORTAL_LABEL[st.portal] ?? st.portal)}</Pill>
+                          {st.signIn ? <Pill tone={st.signIn.tone}>{st.signIn.label}</Pill> : null}
+                          {st.expired ? <Pill tone="bad">{tr("Access ended")}</Pill> : null}
+                        </>
+                      }
+                      meta={[
+                        [tr("Access until"), g.expires_at && !st.expired ? dateFmt(g.expires_at) : null],
+                        [tr("Granted"), dateFmt(g.created_at)],
+                        [tr("Last signed in"), st.lastLogin ? dateFmt(st.lastLogin) : null],
+                      ]}
+                      actions={
+                        <>
+                          <Button size="sm" variant="outline" icon={null} loading={rowBusy === st.email} onClick={() => void invite(st.email)}>
+                            {st.login ? tr("Resend invite") : tr("Create sign-in")}
+                          </Button>
+                          <MoreMenu label={tv("Actions for {{name}}", { name: st.email })}>
+                            <DropdownItem destructive disabled={rowBusy === st.id} onSelect={() => void revoke(g)}>
+                              {tr("Remove access")}
+                            </DropdownItem>
+                          </MoreMenu>
+                        </>
+                      }
+                    />
+                  );
+                }}
               >
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="truncate text-sm font-semibold text-foreground">
-                      {cell(g.subject_email)}
-                    </p>
-                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary-ink">
-                      {portal.toLowerCase()}
-                    </span>
-                    {!login ? (
-                      <span className="rounded-full bg-[rgb(var(--warn))]/15 px-2 py-0.5 text-[11px] font-medium text-[rgb(var(--warn))]">
-                        no sign-in
-                      </span>
-                    ) : !signedInBefore ? (
-                      <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                        invited
-                      </span>
-                    ) : null}
-                    {portal === "CLIENT" ? (
-                      <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                        {tr(SCOPE_LABEL[(g.access_scope as PortalScope) || "ALL"])}
-                        {g.is_client_admin ? ` · ${tr("Admin")}` : ""}
-                      </span>
-                    ) : null}
-                    {g.expires_at ? (
-                      <span className="text-xs text-muted-foreground">
-                        expires {dateFmt(g.expires_at)}
-                      </span>
-                    ) : null}
-                  </div>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {g.client_id
-                      ? `Scope: ${clientName.get(String(g.client_id)) ?? "client"} · `
-                      : ""}
-                    granted {dateFmt(g.created_at)}
-                    {signedInBefore
-                      ? ` · last signed in ${dateFmt(login.last_login_at)}`
-                      : ""}
-                  </p>
-                </div>
-                {portal === "CLIENT" && (
-                  <Button size="sm" variant="ghost" onClick={() => setTeamGrant(g)}>
-                    {tr("Change access")}
-                  </Button>
-                )}
-                {portal === "CLIENT" && !!g.client_id && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() =>
-                      setPreview({
-                        title: `Client portal — ${clientName.get(String(g.client_id)) ?? ""}`,
-                        path: `/portals/client?client_id=${String(g.client_id)}`,
-                      })
-                    }
-                  >
-                    Preview
-                  </Button>
-                )}
-                <Button
-                  size="sm"
-                  variant={login ? "ghost" : "outline"}
-                  loading={rowBusy === email}
-                  onClick={() => invite(email)}
-                  title={
-                    login
-                      ? "Send a fresh set-password link"
-                      : "Create the sign-in and email a set-password link"
-                  }
-                >
-                  {login ? "Resend invite" : "Create sign-in"}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  loading={rowBusy === id}
-                  onClick={() => revoke(id)}
-                >
-                  Revoke
-                </Button>
-              </div>
-            );
-          })}
+                <Table>
+                  <THead>
+                    <TR>
+                      <TH>{tr("Email")}</TH>
+                      <TH>{tr("Portal")}</TH>
+                      <TH>{tr("Sign-in")}</TH>
+                      <TH>{tr("Access until")}</TH>
+                      <TH>{tr("Granted")}</TH>
+                      <TH>
+                        <span className="sr-only">{tr("Actions")}</span>
+                      </TH>
+                    </TR>
+                  </THead>
+                  <TBody>
+                    {external.map((g) => {
+                      const st = grantState(g);
+                      return (
+                        <TR key={st.id} className={st.expired ? "opacity-60" : undefined}>
+                          <TD className="font-medium text-foreground">
+                            <span className="block max-w-[22rem] truncate" title={st.email}>
+                              {cell(g.subject_email)}
+                            </span>
+                          </TD>
+                          <TD className="whitespace-nowrap">{tr(PORTAL_LABEL[st.portal] ?? st.portal)}</TD>
+                          <TD className="whitespace-nowrap">
+                            {st.signIn ? (
+                              <Pill tone={st.signIn.tone}>{st.signIn.label}</Pill>
+                            ) : (
+                              <span className="text-muted-foreground">
+                                {st.lastLogin ? tv("last signed in {{date}}", { date: dateFmt(st.lastLogin) }) : "—"}
+                              </span>
+                            )}
+                          </TD>
+                          <TD className="num whitespace-nowrap">
+                            {g.expires_at ? (
+                              st.expired ? <Pill tone="bad">{tr("Access ended")}</Pill> : dateFmt(g.expires_at)
+                            ) : (
+                              <span className="text-muted-foreground">{tr("No end date")}</span>
+                            )}
+                          </TD>
+                          <TD className="num whitespace-nowrap text-muted-foreground">{dateFmt(g.created_at)}</TD>
+                          <TD className="whitespace-nowrap">
+                            <RowActions>
+                              <Button size="sm" variant="ghost" icon={null} loading={rowBusy === st.email} onClick={() => void invite(st.email)}>
+                                {st.login ? tr("Resend invite") : tr("Create sign-in")}
+                              </Button>
+                              <MoreMenu label={tv("Actions for {{name}}", { name: st.email })}>
+                                <DropdownItem destructive disabled={rowBusy === st.id} onSelect={() => void revoke(g)}>
+                                  {tr("Remove access")}
+                                </DropdownItem>
+                              </MoreMenu>
+                            </RowActions>
+                          </TD>
+                        </TR>
+                      );
+                    })}
+                  </TBody>
+                </Table>
+              </ResponsiveList>
+            )}
+          </section>
+
+          <section className="min-w-0">
+            <h2 className="mb-2 text-sm font-semibold text-foreground">{tr("Client portals")}</h2>
+            <p className="mb-2 text-xs text-muted-foreground">
+              {tr("Who at a client can sign in is managed on the client: open one to invite, change or remove people.")}
+            </p>
+            {clientCounts.length === 0 ? (
+              <EmptyState
+                title={tr("No client has portal users yet")}
+                hint={tr("Open a client and use its Portal tab to invite their contact.")}
+                action={
+                  <Link to="/master/clients" className="text-sm font-medium text-primary-ink hover:underline">
+                    {tr("Go to Clients")}
+                  </Link>
+                }
+              />
+            ) : (
+              <Table>
+                <THead>
+                  <TR>
+                    <TH>{tr("Client")}</TH>
+                    <TH className="text-right">{tr("With access")}</TH>
+                  </TR>
+                </THead>
+                <TBody>
+                  {clientCounts.map((c) => (
+                    <TR key={c.id}>
+                      <TD>
+                        <Link
+                          to={clientPortalHref(c.id)}
+                          className="font-medium text-primary-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          {c.name}
+                        </Link>
+                      </TD>
+                      <TD className="num text-right">{c.n}</TD>
+                    </TR>
+                  ))}
+                </TBody>
+              </Table>
+            )}
+          </section>
         </div>
       )}
 
       <AiActions actions={PORTAL_AI} />
 
-      <GrantModal
-        open={grantOpen}
-        clients={clients}
-        onClose={() => setGrantOpen(false)}
-        onSaved={reload}
-      />
-      <TeamRoleModal
-        grant={teamGrant as React.ComponentProps<typeof TeamRoleModal>["grant"]}
-        onClose={() => setTeamGrant(null)}
-        onSaved={reload}
-      />
+      <GrantModal open={grantOpen} onClose={() => setGrantOpen(false)} onSaved={reload} />
       <PreviewModal
         open={!!preview}
         title={preview?.title ?? ""}
         path={preview?.path ?? ""}
         onClose={() => setPreview(null)}
       />
+      {confirmDialog}
     </section>
   );
 }

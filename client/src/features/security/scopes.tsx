@@ -386,7 +386,7 @@ export function ScopesPage() {
       />
       <HubTabs />
 
-      <div className="flex items-center gap-2">
+      <div className="mb-4 flex items-center gap-2">
         {(["chart", "list"] as const).map((v) => (
           <button
             key={v}

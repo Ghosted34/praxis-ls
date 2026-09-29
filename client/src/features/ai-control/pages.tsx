@@ -1147,7 +1147,7 @@ export function AiUsagePage() {
         <KpiTile label={tr("Total cost")} value={money(total)} />
       </KpiRow>
       {unpriced > 0 && (
-        <p className="text-xs text-muted-foreground">
+        <p className="mb-4 text-xs text-muted-foreground">
           {unpriced} {tr("of these calls priced at zero.")}{" "}
           {tr(
             "A call costs nothing when its vendor has no token rates (AI Control → Vendors → Key) or when no FX rate converts the vendor's currency into",
@@ -1282,9 +1282,13 @@ export function AiHealthPage() {
       />
       <HubTabs />
 
-      {health.error ? <ErrorState message={errMsg(health.error)} /> : null}
+      {health.error ? (
+        <div className="mb-4">
+          <ErrorState message={errMsg(health.error)} />
+        </div>
+      ) : null}
 
-      <div className="flex items-center gap-2">
+      <div className="mb-4 flex items-center gap-2">
         {[1, 7, 30].map((d) => (
           <Button
             key={d}
@@ -1308,7 +1312,7 @@ export function AiHealthPage() {
       {/* Every kind, including the ones at zero — a row that disappears when it
           stops firing is a row that vanishes as it becomes good news, and the
           reader cannot then tell "fixed" from "never measured". */}
-      <ul className="grid gap-2 sm:grid-cols-2">
+      <ul className="mb-4 grid gap-2 sm:grid-cols-2">
         {ranked.map((k) => {
           const copy = HEALTH_COPY[k.kind];
           return (

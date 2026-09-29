@@ -152,6 +152,7 @@ export function MyAdvances({
     <Panel
       title={tr("My advances")}
       subtitle={`${num(rows.length)} open · ${money(owed)} ${tr("to justify")}`}
+      className="mb-4"
     >
       <ul className="divide-y divide-border">
         {rows.map((r) => (

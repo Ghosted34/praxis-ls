@@ -115,7 +115,11 @@ export function CompanyProfilePage() {
         }
       />
       <HubTabs />
-      {error && <ErrorState message={error} />}
+      {error && (
+        <div className="mb-4">
+          <ErrorState message={error} />
+        </div>
+      )}
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="lux-card space-y-3 p-4">
           <Field label="Slogan">

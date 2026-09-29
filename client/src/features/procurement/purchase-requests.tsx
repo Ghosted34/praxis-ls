@@ -267,7 +267,11 @@ export function PurchaseRequestsPage() {
           value={num(list.filter((p) => p.status === "SUBMITTED").length)}
         />
       </KpiRow>
-      {actionError && <ErrorState message={actionError} />}
+      {actionError && (
+        <div className="mb-4">
+          <ErrorState message={actionError} />
+        </div>
+      )}
       <DataList
         columns={columns}
         rows={rows}

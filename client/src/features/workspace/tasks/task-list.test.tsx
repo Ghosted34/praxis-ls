@@ -29,7 +29,8 @@ import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
 import { waitFor } from "@testing-library/react";
 
-import { apiClientMock, renderScreen } from "@/test/screen-harness";
+import { apiClientMock, apiError, renderScreen } from "@/test/screen-harness";
+import * as apiClient from "@/lib/api-client";
 
 vi.mock("@/lib/api-client", async () => apiClientMock());
 
@@ -226,5 +227,91 @@ describe("Task list — the row", () => {
     await screen.findByRole("button", { name: "Show full title" });
 
     expect(await axe(container)).toHaveNoViolations();
+  });
+});
+
+/*
+ * 4. THE LIST IS READ, AND MOVED, AT THE REACH IT WAS ASKED FOR. The file's
+ *    Tasks tab lists at "all"; the board has always sent its reach with a move
+ *    (B-03) and the list did not, so moving a colleague's task from the list
+ *    answered "Task not found" for a row the same server had just rendered.
+ *
+ * 5. A FILE'S OWN TAB IS NOT "FILTERED". The file there is the page, with no
+ *    picker to clear it, so its empty state names the file and offers to add
+ *    work — not "clear a filter or two", about a filter that cannot be cleared.
+ *
+ * 6. A FAILED READ IS NOT AN EMPTY LIST. Falling through to the empty state
+ *    said "Nothing on your list" — on a file's tab, "nothing outstanding on
+ *    this shipment" — when the truth was that the read had failed.
+ */
+describe("Task list — reach, a file's own tab, and a failed read", () => {
+  it("the Move menu carries the audience the rows were listed at", async () => {
+    const spy = vi.spyOn(apiClient, "tenant");
+    const user = userEvent.setup();
+    renderScreen(
+      <TaskList audience="all" selectedId={null} onOpen={vi.fn()} onCreate={() => {}} />,
+      { routes: { "/workspace/tasks": [ROW], "/workspace/tasks/t-1/status": { ...ROW, status: "IN_PROGRESS" } } },
+    );
+
+    await user.click(await screen.findByRole("button", { name: /^Move “Prepare the quarterly/ }));
+    await user.click(await screen.findByRole("menuitem", { name: "In progress" }));
+
+    await waitFor(() => {
+      const call = spy.mock.calls.find(([p]) => String(p) === "/workspace/tasks/t-1/status");
+      expect(call?.[1]).toMatchObject({ method: "POST", body: { status: "IN_PROGRESS", audience: "all" } });
+    });
+    spy.mockRestore();
+  });
+
+  it("a file's own tab asks the server for THAT file", async () => {
+    const spy = vi.spyOn(apiClient, "tenantPaged");
+    renderScreen(
+      <TaskList audience="all" selectedId={null} onOpen={vi.fn()} onCreate={() => {}} dossierId="d-1" />,
+      { routes: { "/workspace/tasks": [] } },
+    );
+    await waitFor(() => {
+      const paths = spy.mock.calls.map(([p]) => String(p));
+      expect(paths.some((p) => p.startsWith("/workspace/tasks?") && p.includes("dossier_id=d-1"))).toBe(true);
+    });
+    spy.mockRestore();
+  });
+
+  it("a file's own tab with no tasks says so, and offers to add one", async () => {
+    const onCreate = vi.fn();
+    const user = userEvent.setup();
+    renderScreen(
+      <TaskList audience="all" selectedId={null} onOpen={vi.fn()} onCreate={onCreate} dossierId="d-1" />,
+      { routes: { "/workspace/tasks": [] } },
+    );
+
+    expect(await screen.findByText("No tasks on this file yet")).toBeInTheDocument();
+    expect(screen.queryByText(/Clear a filter/)).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Add the first task" }));
+    expect(onCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it("a file the reader PICKED is a filter, and its empty state says so", async () => {
+    renderScreen(
+      <TaskList
+        audience="all"
+        selectedId={null}
+        onOpen={vi.fn()}
+        onCreate={() => {}}
+        dossierId="d-1"
+        onDossierChange={() => {}}
+      />,
+      { routes: { "/workspace/tasks": [] } },
+    );
+    expect(await screen.findByText("Nothing matches those filters")).toBeInTheDocument();
+  });
+
+  it("a failed read shows the error, never an empty list", async () => {
+    renderScreen(
+      <TaskList audience="all" selectedId={null} onOpen={vi.fn()} onCreate={() => {}} dossierId="d-1" />,
+      { routes: { "/workspace/tasks": apiError(500, "The task list could not be read") } },
+    );
+    expect(await screen.findByText(/The task list could not be read/)).toBeInTheDocument();
+    expect(screen.queryByText("No tasks on this file yet")).toBeNull();
+    expect(screen.queryByText("Nothing on your list")).toBeNull();
   });
 });

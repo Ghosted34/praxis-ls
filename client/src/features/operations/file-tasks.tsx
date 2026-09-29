@@ -51,9 +51,27 @@ export function FileTasksTab({ fileId }: { fileId: string }) {
    * link is the one the bell and the board already use.
    */
   const openTask = React.useCallback(
-    (id: string) => navigate(`/workspace/tasks?task=${encodeURIComponent(id)}`),
-    [navigate],
+    (id: string) => {
+      // The reach and the file travel with the link. The Tasks page reads a
+      // panel at ITS audience, which defaults to "mine" — so a colleague's
+      // task, listed here at "all", opened as "Task not found". Carrying
+      // `audience=all` asks for the same reach this tab asked for (the server
+      // still narrows it), and the file keeps the page behind the panel on
+      // the same rows the reader just left.
+      const params = new URLSearchParams({ task: id, audience: "all", dossier_id: fileId });
+      navigate(`/workspace/tasks?${params.toString()}`);
+    },
+    [navigate, fileId],
   );
+
+  /*
+   * Memoised, because the dialog re-seeds its whole form whenever `initial`
+   * changes identity (task-dialog.tsx). A fresh object literal per render
+   * meant any re-render of the 360 while the dialog was open — the overview
+   * refetching when the reader switched back to the app to paste a B/L
+   * number — wiped the title and notes they had typed.
+   */
+  const initial = React.useMemo(() => ({ dossier_id: fileId }), [fileId]);
 
   return (
     <div className="space-y-3">
@@ -81,7 +99,7 @@ export function FileTasksTab({ fileId }: { fileId: string }) {
         // Pre-linked, and VISIBLY so: the form opens showing the file rather
         // than applying it on save, so the user can see what they are about to
         // attach the work to — and can still pick a milestone within it.
-        initial={{ dossier_id: fileId }}
+        initial={initial}
         onSaved={() => setCreateOpen(false)}
       />
     </div>

@@ -269,9 +269,56 @@ describe("tasks.service.resolveFileLink — the rules a write is settled by", ()
   });
 
   it("404s a stage that no longer exists", async () => {
+    // The FILE exists (so the existence read passes); only the stage is gone.
+    const fileNoStage = {
+      query: async (sql, params = []) =>
+        /dossier_visible/.test(sql)
+          ? { rows: [{ dossier_id: params[0] }], rowCount: 1 }
+          : { rows: [], rowCount: 0 },
+    };
     await expect(
-      service.resolveFileLink(noStage, { dossier_id: "d1", milestone_instance_id: "m1" }),
-    ).rejects.toMatchObject({ status: 404 });
+      service.resolveFileLink(fileNoStage, { dossier_id: "d1", milestone_instance_id: "m1" }),
+    ).rejects.toMatchObject({ status: 404, message: expect.stringContaining("milestone") });
+  });
+
+  /* ── the file must exist (no FK — the service is the only guard) ─────── */
+
+  it("refuses a link to a file that does not exist, naming the file", async () => {
+    // The stage check only runs when a stage is named, so without this a
+    // stale or mistyped uuid stored a task "on" nothing: absent from every
+    // file's Tasks tab, counted under a file Analytics cannot name.
+    await expect(
+      service.resolveFileLink(noStage, { dossier_id: "d-gone" }),
+    ).rejects.toMatchObject({ status: 404, message: expect.stringContaining("operations file") });
+  });
+
+  it("checks the file through dossier_visible, so a DRAFT is not linkable", async () => {
+    const seen = [];
+    const recording = {
+      query: async (sql, params = []) => {
+        seen.push({ sql, params });
+        return { rows: [{ dossier_id: params[0] }], rowCount: 1 };
+      },
+    };
+    await service.resolveFileLink(recording, { dossier_id: "d1" });
+    const read = seen.find((c) => /dossier/.test(c.sql));
+    expect(read.sql).toMatch(/FROM dossier_visible WHERE dossier_id = \$1/);
+    expect(read.params).toEqual(["d1"]);
+  });
+
+  it("re-sending the file a task already has costs no lookup at all", async () => {
+    let queries = 0;
+    const counting = { query: async () => { queries += 1; return { rows: [], rowCount: 0 }; } };
+    const patch = await service.resolveFileLink(counting, { dossier_id: "d1" }, { dossier_id: "d1" });
+    expect(patch).toEqual({ dossier_id: "d1" });
+    expect(queries).toBe(0);
+  });
+
+  it("clearing the file needs no lookup — there is nothing to find", async () => {
+    let queries = 0;
+    const counting = { query: async () => { queries += 1; return { rows: [], rowCount: 0 }; } };
+    await service.resolveFileLink(counting, { dossier_id: null }, { dossier_id: "d1" });
+    expect(queries).toBe(0);
   });
 
   it("clearing the file clears the stage, even when the caller only sent the file", async () => {
@@ -394,10 +441,12 @@ describe("tasks.service.resolveFileLink — the rules a write is settled by", ()
   });
 
   it("deduplicates a set that names a stage twice, and reads it in ONE lookup", async () => {
+    // ONE milestone lookup for the whole set. (A new link also costs one
+    // file-existence read, which is a different question — not counted.)
     let lookups = 0;
     const counting = {
       query: async (sql, params) => {
-        lookups += 1;
+        if (/milestone_instance/.test(sql)) lookups += 1;
         return stageOn("d1").query(sql, params);
       },
     };

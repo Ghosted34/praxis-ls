@@ -144,6 +144,26 @@ function visibilityOf(ctx, audience) {
   };
 }
 
+/**
+ * The list's record filter, from either shape a caller sends: `entity`
+ * (the HTTP handler) or the flat `entity_type` + `entity_id` pair (the AI
+ * manifest). Half a pair is no filter rather than a filter on NULL.
+ */
+function entityFilterOf(q = {}) {
+  if (q.entity && q.entity.entity_type && q.entity.entity_id) {
+    return { entity_type: q.entity.entity_type, entity_id: q.entity.entity_id };
+  }
+  if (q.entity_type && q.entity_id) return { entity_type: q.entity_type, entity_id: q.entity_id };
+  return null;
+}
+
+/** An integer clamped into range; anything unparseable is the fallback. */
+function boundedInt(value, { min, max, fallback }) {
+  const n = Number(value);
+  if (value === undefined || value === null || value === "" || !Number.isFinite(n)) return fallback;
+  return Math.min(Math.max(Math.trunc(n), min), max);
+}
+
 /* ── derivation ───────────────────────────────────────────────────────────── */
 
 /**
@@ -270,6 +290,15 @@ async function resolveFileLink(client, input, before = null) {
   const fileChanged = touchesFile && dossierId !== ((before ? before.dossier_id : null) || null);
   const stagesCleared = touchesFile && (!dossierId || (fileChanged && !touchesStage));
   if (stagesCleared) stageIds = [];
+
+  // A NEW link must name a real file. There is no FK (see the 13920 schema
+  // note), and the stage check below only runs when a stage is named — so
+  // without this a stale or mistyped uuid stored a task "on" a file that does
+  // not exist: absent from every file's tab, counted under a file Analytics
+  // cannot name. Re-sending the file the task already has costs no lookup.
+  if (fileChanged && dossierId && !(await repo.dossierLinkable(client, dossierId))) {
+    throw new AppError("NOT_FOUND", "That operations file no longer exists.", 404);
+  }
 
   if (stageIds.length) {
     if (!dossierId) {
@@ -518,10 +547,17 @@ async function listTasks(client, ctx, q = {}) {
     // and the Analytics rollup count one population rather than two.
     dossierId: q.dossier_id,
     milestoneInstanceId: q.milestone_instance_id,
+    // The record a task hangs off. The HTTP handler builds `entity`; the AI
+    // manifest passes the flat pair it advertises. Both used to be dropped
+    // here, so "tasks on this costing" answered with every task.
+    entity: entityFilterOf(q),
     q: q.q,
     sort: q.sort,
-    limit: q.limit,
-    offset: q.offset,
+    // Bounded HERE as well as in the validator: the AI read path hands this
+    // function its payload unvalidated, and an unbounded LIMIT is a tenant-wide
+    // read reachable from a chat message.
+    limit: boundedInt(q.limit, { min: 1, max: 200, fallback: 50 }),
+    offset: boundedInt(q.offset, { min: 0, max: Number.MAX_SAFE_INTEGER, fallback: 0 }),
   });
   const [blockedRows, childRows, blockageRows] = await Promise.all([
     repo.blockedCountsFor(client, rows.map((r) => r.task_id)),
@@ -719,6 +755,24 @@ async function getTask(client, ctx, id, audience) {
 }
 
 async function createTask(client, ctx, input) {
+  // A plain create that names a parent is a child create, and is held to the
+  // same rules as the `/children` route (see `parentFor`).
+  if (input.parent_task_id) {
+    const parent = await parentFor(client, ctx, input.parent_task_id, ctx.audience);
+    return createTaskUnder(client, ctx, parent, input);
+  }
+  return createTaskUnder(client, ctx, null, input);
+}
+
+/**
+ * The insert itself. `parent` is the ALREADY-AUTHORISED parent (from
+ * `parentFor`) or null, so a caller cannot reach this with an unchecked
+ * `parent_task_id` — it is re-stamped from the parent below.
+ */
+async function createTaskUnder(client, ctx, parent, input) {
+  input = { ...input };
+  if (parent) input.parent_task_id = parent.task_id;
+  else delete input.parent_task_id;
   const timeZone = await timezoneOf(client);
   assertRecurrenceAnchored(input.recurrence_rule, input.due_at);
   // A task due "15/09" is wanted by the end of the working day, not at
@@ -1016,14 +1070,16 @@ async function patchSubtask(client, ctx, taskId, subtaskId, input) {
     const timeZone = await timezoneOf(client);
     patch.due_at = toInstant(input.due_at, { timeZone, dateOnlyTime: "17:00:00" });
   }
-  const row = await repo.updateSubtask(client, subtaskId, patch);
-  if (!row || row.task_id !== taskId) throw new AppError("NOT_FOUND", "Subtask not found", 404);
+  // Scoped to the task in the statement itself, so a step of another task is
+  // never written — not written-then-refused (see repo.updateSubtask).
+  const row = await repo.updateSubtask(client, taskId, subtaskId, patch);
+  if (!row) throw new AppError("NOT_FOUND", "Subtask not found", 404);
   return row;
 }
 
 async function deleteSubtask(client, ctx, taskId, subtaskId) {
   await getTask(client, ctx, taskId);
-  const ok = await repo.deleteSubtask(client, subtaskId);
+  const ok = await repo.deleteSubtask(client, taskId, subtaskId);
   if (!ok) throw new AppError("NOT_FOUND", "Subtask not found", 404);
   return { deleted: true };
 }
@@ -1336,6 +1392,29 @@ async function setDependencyOverride(client, ctx, taskId, dependencyId, { overri
 }
 
 /**
+ * The parent a new child may be placed under — or a refusal.
+ *
+ * ONE copy of the rules, run by both doors a child can come through: the
+ * `/children` route and a plain `POST /tasks` carrying `parent_task_id`. The
+ * second door used to skip all three checks, so a caller could hang work off a
+ * task they cannot see (moving its roll-up), nest a third level the rule
+ * forbids, or break down someone's personal task.
+ */
+async function parentFor(client, ctx, parentTaskId, audience) {
+  const resolved = resolveAudience(ctx, audience ?? ctx.audience);
+  // Visibility first, with getTask's single 404 for "missing" and "not yours".
+  const parent = await getTask(client, ctx, parentTaskId, resolved);
+  assertParentable(parent);
+  if (parent.is_personal && parent.created_by !== ctx.user.user_id) {
+    // Unreachable through `getTask` today, and kept as a belt: a personal task
+    // is its creator's alone, and giving it children would put other people's
+    // work inside a private record.
+    throw new AppError("FORBIDDEN", "That personal task is not yours to break down.", 403);
+  }
+  return parent;
+}
+
+/**
  * Create a child task under a parent.
  *
  * Children INHERIT the parent's operations-file link by default — that is the
@@ -1349,21 +1428,14 @@ async function setDependencyOverride(client, ctx, taskId, dependencyId, { overri
  * repeating parent is a one-off piece of work, not a second series — spawning
  * children per occurrence would multiply the board by the recurrence count.
  *
- * Authorisation is NOT inherited either: `createTask` re-runs the same scope
- * and personal-task checks it runs for a top-level task, so being able to see
- * a parent is not authority to place work in somebody else's scope.
+ * Authorisation is NOT inherited either: the parent is re-checked by
+ * `parentFor` (visible, one level, not someone's personal task) and the child
+ * goes through the same insert a top-level task does, so being able to see a
+ * parent is not authority to place work in somebody else's scope.
  */
 async function addChildTask(client, ctx, parentTaskId, input, audience) {
-  const resolved = resolveAudience(ctx, audience ?? ctx.audience);
-  const parent = await getTask(client, ctx, parentTaskId, resolved);
-  assertParentable(parent);
-  if (parent.is_personal && parent.created_by !== ctx.user.user_id) {
-    // Unreachable through `getTask` today, and kept as a belt: a personal task
-    // is its creator's alone, and giving it children would put other people's
-    // work inside a private record.
-    throw new AppError("FORBIDDEN", "That personal task is not yours to break down.", 403);
-  }
-  const child = await createTask(client, ctx, {
+  const parent = await parentFor(client, ctx, parentTaskId, audience);
+  const child = await createTaskUnder(client, ctx, parent, {
     ...input,
     parent_task_id: parentTaskId,
     entity_type: input.entity_type !== undefined ? input.entity_type : parent.entity_type,
@@ -1686,7 +1758,10 @@ async function raiseBlockage(client, ctx, taskId, body, audience) {
 async function resolveBlockage(client, ctx, taskId, blockageId, body, audience) {
   const resolved = resolveAudience(ctx, audience ?? ctx.audience);
   const task = await getTask(client, ctx, taskId, resolved);
+  // The task is in the WHERE (repo.resolveBlockageRow): a hold on another task
+  // is never resolved, rather than resolved and then reported missing.
   const row = await repo.resolveBlockageRow(client, blockageId, {
+    taskId,
     resolvedBy: ctx.user.user_id,
     resolveNote: body.resolve_note || null,
   });

@@ -40,10 +40,19 @@ const { atomically } = require("../../../shared/db/tx");
 function visibleWhere(v = {}, start = 1) {
   const p = [];
   const sql = [];
-  if (v.audience === "mine" && v.userId) {
+  // FAIL CLOSED. Every branch below keys on the caller, so a visibility bundle
+  // with no user used to fall through all of them and return NO predicate —
+  // the whole tenant, personal tasks included — for what was asked as "mine".
+  // No reader reaches here without a user today (HTTP always has one, and the
+  // AI adapter passes the caller's id); this is so that the day one does, it
+  // sees nothing rather than everything.
+  if (!v.userId) return { sql: ["FALSE"], params: p, next: start };
+  // Only an explicit "team" or "all" widens. Anything else — "mine", a typo,
+  // an audience nobody resolved — is the caller's own work, never the tenant.
+  if (v.audience !== "team" && v.audience !== "all") {
     p.push(v.userId);
     sql.push(`(t.assigned_to = $${start + p.length - 1} OR t.created_by = $${start + p.length - 1})`);
-  } else if (v.audience === "team" && v.userId) {
+  } else if (v.audience === "team") {
     if (v.scopeIds && v.scopeIds.length) {
       p.push(v.userId, v.scopeIds);
       sql.push(
@@ -235,7 +244,10 @@ async function listTasks(client, { audience, userId, scopeIds, personalOnly, sta
   params.push(...vis.params);
   where.push(...vis.sql);
 
-  const order = TASK_ORDER[sort] || TASK_ORDER.due_asc;
+  // An OWN key of the allow-list, not any truthy lookup: `TASK_ORDER["constructor"]`
+  // is a function, and its source text would land in the ORDER BY. The HTTP
+  // validator enumerates `sort`; the AI read path does not.
+  const order = Object.prototype.hasOwnProperty.call(TASK_ORDER, sort) ? TASK_ORDER[sort] : TASK_ORDER.due_asc;
   const { rows } = await client.query(
     `${TASK_SELECT_PAGED}
       WHERE ${where.join(" AND ")}
@@ -540,8 +552,17 @@ async function insertSubtask(client, { task_id, title, display_order, due_at }) 
  * to done, cleared on the way back — so a step and its completion time can never
  * disagree. An empty patch re-reads rather than issuing `UPDATE … SET `, the
  * same guard `updateTask` makes.
+ *
+ * ── THE STEP IS ADDRESSED THROUGH ITS TASK ─────────────────────────────────
+ *
+ * `task_id` is in the WHERE, not checked on the row that comes back. The
+ * service authorises the TASK in the URL; a step id is only meaningful under
+ * it. Checking `row.task_id` after the UPDATE — the shape this had — meant the
+ * write had already landed when the 404 was thrown, and the request's pinned
+ * connection is not a transaction, so nothing rolled it back: anyone who could
+ * see one task could tick, re-date or delete a step on any other.
  */
-async function updateSubtask(client, subtaskId, patch) {
+async function updateSubtask(client, taskId, subtaskId, patch) {
   const sets = [];
   const params = [];
   if ("due_at" in patch) {
@@ -555,19 +576,28 @@ async function updateSubtask(client, subtaskId, patch) {
     sets.push(`completed_at = CASE WHEN $${i} THEN now() ELSE NULL END`);
   }
   if (!sets.length) {
-    const { rows } = await client.query("SELECT * FROM task_subtask WHERE task_subtask_id = $1", [subtaskId]);
+    const { rows } = await client.query(
+      "SELECT * FROM task_subtask WHERE task_subtask_id = $1 AND task_id = $2",
+      [subtaskId, taskId],
+    );
     return rows[0] || null;
   }
-  params.push(subtaskId);
+  params.push(subtaskId, taskId);
   const { rows } = await client.query(
-    `UPDATE task_subtask SET ${sets.join(", ")} WHERE task_subtask_id = $${params.length} RETURNING *`,
+    `UPDATE task_subtask SET ${sets.join(", ")}
+      WHERE task_subtask_id = $${params.length - 1} AND task_id = $${params.length}
+      RETURNING *`,
     params,
   );
   return rows[0] || null;
 }
 
-async function deleteSubtask(client, subtaskId) {
-  const { rowCount } = await client.query("DELETE FROM task_subtask WHERE task_subtask_id = $1", [subtaskId]);
+/** Remove a step — only from the task it belongs to (see `updateSubtask`). */
+async function deleteSubtask(client, taskId, subtaskId) {
+  const { rowCount } = await client.query(
+    "DELETE FROM task_subtask WHERE task_subtask_id = $1 AND task_id = $2",
+    [subtaskId, taskId],
+  );
   return rowCount > 0;
 }
 
@@ -901,14 +931,19 @@ async function insertBlockage(client, { taskId, note, estimatedResolveAt = null,
  * Close the hold. `resolved_at IS NULL` in the WHERE is the guard: two racing
  * resolve clicks produce one resolution, and the loser gets zero rows back
  * and reports 404 rather than re-shifting the due date.
+ *
+ * `task_id` is the second guard, and it is in the WHERE for the reason
+ * `updateSubtask` gives: checked on the returned row instead, a hold on a task
+ * the caller cannot see was already resolved by the time the 404 went out.
+ * A missing `taskId` binds NULL, which matches nothing — closed, not open.
  */
-async function resolveBlockageRow(client, blockageId, { resolvedBy, resolveNote = null }) {
+async function resolveBlockageRow(client, blockageId, { taskId, resolvedBy, resolveNote = null }) {
   const { rows } = await client.query(
     `UPDATE task_blockage
         SET resolved_at = now(), resolved_by = $2, resolve_note = $3
-      WHERE task_blockage_id = $1 AND resolved_at IS NULL
+      WHERE task_blockage_id = $1 AND task_id = $4 AND resolved_at IS NULL
       RETURNING *`,
-    [blockageId, resolvedBy, resolveNote],
+    [blockageId, resolvedBy, resolveNote, taskId ?? null],
   );
   return rows[0] || null;
 }
@@ -1943,6 +1978,24 @@ async function milestoneFilesOf(client, milestoneInstanceIds) {
   return rows;
 }
 
+/**
+ * Does this operations file exist as a file a person can see? (13920)
+ *
+ * The link has no FK by design (a constraint on a pre-existing table aborts a
+ * new tenant's provisioning), so the service is the only thing between a
+ * typo'd or stale uuid and a task filed under nothing. Through
+ * `dossier_visible`: a DRAFT is wizard state, not yet a file, and every task
+ * read joins the view — a task linked to a draft would render with no file.
+ */
+async function dossierLinkable(client, dossierId) {
+  if (!dossierId) return false;
+  const { rows } = await client.query(
+    "SELECT dossier_id FROM dossier_visible WHERE dossier_id = $1",
+    [dossierId],
+  );
+  return rows.length > 0;
+}
+
 /** One stage's file — 13920's single-stage form of the lookup above. */
 async function milestoneFileOf(client, milestoneInstanceId) {
   const rows = await milestoneFilesOf(client, [milestoneInstanceId]);
@@ -2169,7 +2222,7 @@ module.exports = {
   setBlockageDueShift, shiftTaskDue, existingUserIds,
   analyticsScope, analyticsSummary, analyticsThroughput, analyticsOverdueAging,
   analyticsWorkload, analyticsCycleTime, analyticsBlocked, analyticsBurndown,
-  analyticsComposition, analyticsByFile, analyticsByMilestone, milestoneFileOf, milestoneFilesOf, replaceTaskMilestones,
+  analyticsComposition, analyticsByFile, analyticsByMilestone, milestoneFileOf, milestoneFilesOf, dossierLinkable, replaceTaskMilestones,
   eventVisibleWhere, listEventsWindow, listEvents, insertEvent, findEvent, updateEvent, softDeleteEvent, findEventClashes,
   listParticipants, insertParticipant, respondParticipant, removeParticipant,
   dueTaskReminders, dueEventReminders, markReminderSent,

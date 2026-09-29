@@ -168,12 +168,27 @@ describe("the resolve write cannot double-shift", () => {
   it("resolveBlockageRow guards on resolved_at IS NULL", async () => {
     const client = mockClient(() => []);
     await repo.resolveBlockageRow(client, "b1", {
+      taskId: "t1",
       resolvedBy: ME,
       resolveNote: "cleared",
     });
     const { sql, params } = client.calls[0];
     expect(sql).toContain("resolved_at IS NULL");
-    expect(params).toEqual(["b1", ME, "cleared"]);
+    expect(params).toEqual(["b1", ME, "cleared", "t1"]);
+  });
+
+  it("resolveBlockageRow resolves a hold only on the task in the URL", async () => {
+    // The owner is in the WHERE. Checked on the returned row instead, a hold on
+    // a task the caller cannot see was ALREADY resolved when the 404 went out —
+    // the request's connection is not a transaction, so nothing undid it.
+    const client = mockClient(() => []);
+    await repo.resolveBlockageRow(client, "b1", { taskId: "t1", resolvedBy: ME });
+    expect(client.calls[0].sql).toMatch(/task_blockage_id = \$1 AND task_id = \$4/);
+
+    // No task named binds NULL, which matches nothing — closed, not open.
+    const bare = mockClient(() => []);
+    await repo.resolveBlockageRow(bare, "b1", { resolvedBy: ME });
+    expect(bare.calls[0].params[3]).toBeNull();
   });
 
   it("shiftTaskDue only touches rows that HAVE a due date", async () => {

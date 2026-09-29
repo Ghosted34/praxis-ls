@@ -136,7 +136,7 @@ export function useTaskListPaged(
     /** Narrow to one operations file, or one stage of its chain (13920). */
     dossier_id?: string;
     milestone_instance_id?: string;
-    sort?: string;
+    sort?: api.TaskSort;
     limit?: number;
     offset?: number;
   },

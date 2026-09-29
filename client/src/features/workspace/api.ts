@@ -565,6 +565,9 @@ export const listTasks = (
   } = {},
 ) => tenant<Task[]>(`/workspace/tasks${qs(params)}`);
 
+/** The list's sort keys — the server's allow-list, so anything else is a 422. */
+export type TaskSort = "due_asc" | "due_desc" | "created_desc" | "priority_desc";
+
 /** The paginated, filterable list the List view draws — the board's cap-proof twin. */
 export const listTasksPaged = (
   params: {
@@ -576,6 +579,7 @@ export const listTasksPaged = (
     /** Narrow to one operations file, or one stage of its chain (13920). */
     dossier_id?: string;
     milestone_instance_id?: string;
+    sort?: TaskSort;
     limit?: number;
     offset?: number;
   } = {},

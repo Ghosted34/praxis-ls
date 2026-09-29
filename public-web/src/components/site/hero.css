@@ -3,12 +3,15 @@
  *
  * ── IT IS NOT ON THE ENTRY, AND THAT IS THE WHOLE POINT ────────────────────
  *
- * Everything here is mounted by `hero.tsx` and by nothing else, and `hero.tsx`
- * is reachable only from `marketing-page.tsx`, which `router.tsx` loads with
- * `React.lazy`. In `index.css` these rules were on the FIRST-PAINT path of every
- * route in the app — the track page, the portal login, a policy page — none of
- * which can render a hero. Here Rollup attaches them to the marketing chunk,
- * which is the only chunk that can use them.
+ * Two bands mount what is in here, and both are behind `React.lazy`: `hero.tsx`,
+ * reachable only from `marketing-page.tsx`, and the portal's sign-in frame
+ * (`features/portal/auth/sign-in.tsx`), which wears the pass, the glare, the
+ * beam-catching edge, the tilt and the entrance so that the door a client signs
+ * in at is the same scene as the door they walked past. In `index.css` these
+ * rules were on the FIRST-PAINT path of every route in the app — the track
+ * page, a policy page — none of which can render a hero. Imported from two lazy
+ * modules, Rollup gives them a chunk of their own that loads with either band
+ * and with nothing else.
  *
  * That was not possible until PR #330. O-13 held per-route CSS splitting back on
  * the grounds that `check:motion` and `check:contrast` read `src/index.css` and

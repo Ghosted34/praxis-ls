@@ -75,7 +75,14 @@ export const en = {
   signin: {
     title: "Sign in",
     sub: "Your shipments, documents and invoices.",
-    tagline: "Everything about your cargo, in one place.",
+    eyebrow: "Client portal",
+    // One sentence in two halves: the second arrives on its own beat in the
+    // tenant's colour, exactly as the homepage headline's does.
+    taglineMain: "Everything about your cargo,",
+    taglineAccent: "in one place.",
+    trackLink: "Track a shipment without signing in",
+    themeDark: "Switch to dark mode",
+    themeLight: "Switch to light mode",
     whatsInside: "What’s inside",
     feature: {
       track: "Follow every shipment, step by step",
@@ -868,7 +875,12 @@ export const fr = {
   signin: {
     title: "Connexion",
     sub: "Vos expéditions, documents et factures.",
-    tagline: "Tout sur vos marchandises, au même endroit.",
+    eyebrow: "Espace client",
+    taglineMain: "Tout sur vos marchandises,",
+    taglineAccent: "au même endroit.",
+    trackLink: "Suivre une expédition sans vous connecter",
+    themeDark: "Passer en mode sombre",
+    themeLight: "Passer en mode clair",
     whatsInside: "Ce que vous y trouverez",
     feature: {
       track: "Suivez chaque expédition, étape par étape",

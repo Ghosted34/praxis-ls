@@ -260,7 +260,7 @@ describe("tasks.repo — placeholders match parameters", () => {
 
   it("updateSubtask ticks a step done, stamping completed_at in the same UPDATE", async () => {
     const c = mockClient([{ task_subtask_id: "s1", is_done: true }]);
-    await repo.updateSubtask(c, "s1", { is_done: true });
+    await repo.updateSubtask(c, "t1", "s1", { is_done: true });
     const { sql, params } = c.calls[0];
     expectBound(c.calls[0]);
     expect(sql).toMatch(/^UPDATE task_subtask/);
@@ -269,26 +269,48 @@ describe("tasks.repo — placeholders match parameters", () => {
     );
     expect(sql).toMatch(/RETURNING \*/);
     expect(sql).not.toMatch(/RETURNING \* FROM/);
-    expect(params).toEqual([true, "s1"]);
+    expect(params).toEqual([true, "s1", "t1"]);
   });
 
   it("updateSubtask moves a step's deadline without touching its done flag", async () => {
     const c = mockClient([{ task_subtask_id: "s1" }]);
-    await repo.updateSubtask(c, "s1", { due_at: "2026-09-20T17:00:00Z" });
+    await repo.updateSubtask(c, "t1", "s1", { due_at: "2026-09-20T17:00:00Z" });
     const { sql, params } = c.calls[0];
     expectBound(c.calls[0]);
     expect(sql).toMatch(/due_at = \$1/);
     expect(sql).not.toMatch(/completed_at/);
-    expect(params).toEqual(["2026-09-20T17:00:00Z", "s1"]);
+    expect(params).toEqual(["2026-09-20T17:00:00Z", "s1", "t1"]);
   });
 
   it("updateSubtask with an empty patch re-reads rather than issuing UPDATE", async () => {
     const c = mockClient([{ task_subtask_id: "s1" }]);
-    await repo.updateSubtask(c, "s1", {});
+    await repo.updateSubtask(c, "t1", "s1", {});
     expect(c.calls[0].sql.trim()).toMatch(/^SELECT/);
+    expectBound(c.calls[0]);
+    expect(c.calls[0].sql).toMatch(/task_id = \$2/);
+    expect(c.calls[0].params).toEqual(["s1", "t1"]);
     expect(
       c.calls.some((call) => /\bUPDATE task_subtask\b/.test(call.sql)),
     ).toBe(false);
+  });
+
+  /*
+   * A step is addressed THROUGH its task. The service authorises the task in
+   * the URL; the step id rides under it. Checking the owner on the row the
+   * UPDATE returned — the old shape — refused the request only after the write
+   * had landed, and the request's connection is not a transaction, so anyone
+   * who could see one task could tick, re-date or delete a step on any other.
+   */
+  it("updateSubtask and deleteSubtask put the owning task in the WHERE", async () => {
+    const upd = mockClient([]);
+    await repo.updateSubtask(upd, "t1", "s1", { is_done: true });
+    expect(upd.calls[0].sql).toMatch(/WHERE task_subtask_id = \$2 AND task_id = \$3/);
+    expectBound(upd.calls[0]);
+
+    const del = mockClient([]);
+    await repo.deleteSubtask(del, "t1", "s1");
+    expect(del.calls[0].sql).toMatch(/^DELETE FROM task_subtask WHERE task_subtask_id = \$1 AND task_id = \$2/);
+    expect(del.calls[0].params).toEqual(["s1", "t1"]);
   });
 
   it("subtasksInRange joins the parent so task visibility hides its steps", async () => {
@@ -423,6 +445,18 @@ describe("tasks.repo — placeholders match parameters", () => {
     expect(c.calls[0].sql).not.toMatch(/DROP TABLE/);
     expect(c.calls[0].params).toContain("%'; DROP TABLE task; --%");
   });
+
+  it("a sort key off the allow-list's own keys falls back rather than landing in SQL", async () => {
+    // `TASK_ORDER["constructor"]` is Object's constructor — truthy — and its
+    // source text used to be interpolated into the ORDER BY. The HTTP
+    // validator enumerates `sort`; the AI read path passes it raw.
+    for (const sort of ["constructor", "__proto__", "toString", "due_asc; DROP TABLE task"]) {
+      const c = mockClient();
+      await repo.listTasks(c, { audience: "mine", userId: "u1", sort });
+      expect(c.calls[0].sql).toMatch(/ORDER BY \(t\.due_at IS NULL\), t\.due_at ASC NULLS LAST/);
+      expect(c.calls[0].sql).not.toMatch(/native code|DROP TABLE|\[object/);
+    }
+  });
 });
 
 describe("tasks.repo — the visibility predicate", () => {
@@ -495,6 +529,27 @@ describe("tasks.repo — the visibility predicate", () => {
     expect(sql.join(" ")).toMatch(
       /t\.is_personal = false OR t\.created_by = \$1 OR t\.assigned_to = \$1/,
     );
+  });
+
+  it("FAILS CLOSED with no caller — nothing, never the tenant", () => {
+    // Every branch keys on the user. With none, the predicate used to be
+    // EMPTY: a "mine" read with a missing id returned every task in the
+    // tenant, personal ones included.
+    for (const audience of ["mine", "team", "all", undefined]) {
+      const { sql, params } = repo.visibleWhere({ audience, userId: null, personalOnly: true });
+      expect(sql).toEqual(["FALSE"]);
+      expect(params).toEqual([]);
+    }
+  });
+
+  it("an audience nobody resolved is the caller's own work, not the tenant", () => {
+    // Only "team" and "all" widen. A typo or an undefined audience reaching
+    // the repo must read as "mine" rather than as "no filter at all".
+    for (const audience of [undefined, "everyone", ""]) {
+      const { sql, params } = repo.visibleWhere({ audience, userId: "u1" });
+      expect(sql.join(" ")).toMatch(/t\.assigned_to = \$1 OR t\.created_by = \$1/);
+      expect(params).toEqual(["u1"]);
+    }
   });
 
   it("numbers its placeholders from where the caller left off", async () => {

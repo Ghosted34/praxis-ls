@@ -117,10 +117,14 @@ export function TasksPage() {
   }, [params, setParams]);
 
   // The server narrows an audience the caller may not use; keep the switch on
-  // the truth rather than on the wish.
+  // the truth rather than on the wish — but only once the server has SAID what
+  // the truth is. Before the board answers, `offered` is the ["mine"] fallback,
+  // and narrowing against it reset every `?audience=team|all` link to "mine"
+  // on arrival: an Analytics drill-down opened a different population than it
+  // counted, and a file's Tasks tab opened a colleague's task as not found.
   React.useEffect(() => {
-    if (!offered.includes(audience)) setAudience("mine");
-  }, [offered, audience]);
+    if (q.data && !offered.includes(audience)) setAudience("mine");
+  }, [q.data, offered, audience]);
 
   function chooseAudience(next: Audience) {
     setAudience(next);

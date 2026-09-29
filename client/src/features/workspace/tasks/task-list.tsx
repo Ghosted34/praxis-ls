@@ -53,19 +53,20 @@ import { stageSummary } from "../file-link";
 import { SearchField } from "../search-field";
 import { DropdownMenu, DropdownItem } from "@/components/ui/dropdown-menu";
 import { EmptyState, LoadingRow } from "@/components/ui/states";
+import { ScreenError } from "@/components/connection/screen-error";
 import { useToast } from "@/components/ui/toast";
 import { errMsg } from "@/lib/use-resource";
 import { dateFmt } from "@/lib/format";
 import { OperationsFilePicker } from "@/components/operations/file-picker";
 import { BOARD_COLUMNS, TASK_PRIORITIES, TASK_STATUSES } from "../api";
-import type { Audience, Task, TaskPriority, TaskStatus } from "../api";
+import type { Audience, Task, TaskPriority, TaskSort, TaskStatus } from "../api";
 import { useMoveTask, useTaskListPaged } from "../hooks";
 import { PRIORITY_LABEL, PRIORITY_TONE, STATUS_LABEL, STATUS_TONE } from "../labels";
 import { describeRule } from "../repeat";
 
 const PAGE = 50;
 
-const SORT_OPTIONS = [
+const SORT_OPTIONS: Array<{ value: TaskSort; label: string }> = [
   { value: "due_asc", label: "Soonest due first" },
   { value: "due_desc", label: "Latest due first" },
   { value: "priority_desc", label: "Most urgent first" },
@@ -122,7 +123,7 @@ export function TaskList({
   const q = (ownSearch ? ownQ : search).trim();
   const [status, setStatus] = React.useState<"" | TaskStatus>("");
   const [priority, setPriority] = React.useState<"" | TaskPriority>("");
-  const [sort, setSort] = React.useState("due_asc");
+  const [sort, setSort] = React.useState<TaskSort>("due_asc");
   const [offset, setOffset] = React.useState(0);
 
   // Any filter change — the search included — returns to the first page.
@@ -150,14 +151,23 @@ export function TaskList({
 
   async function moveTo(task: Task, next: TaskStatus) {
     try {
-      await move.mutateAsync({ id: task.task_id, status: next });
+      // The reach the rows were listed at travels with the move, exactly as it
+      // does from the board (B-03). Without it the server re-reads the task as
+      // "mine", so moving a colleague's task from a Team/All list — or from a
+      // file's Tasks tab, which always lists at "all" — answered "Task not
+      // found" for a row the same server had just rendered.
+      await move.mutateAsync({ id: task.task_id, status: next, audience });
     } catch (err) {
       toast.error(errMsg(err));
     }
   }
 
+  // A file the CALLER fixed (the file's own 360) is the page, not a filter:
+  // there is no picker to clear it with, so the empty state must not say
+  // "clear a filter or two" about it, nor hide the button that adds work here.
+  const fileFixed = Boolean(dossierId) && !onDossierChange;
   const filtered = Boolean(
-    q || status || priority || dossierId || milestoneInstanceId || assignedTo,
+    q || status || priority || (dossierId && !fileFixed) || milestoneInstanceId || assignedTo,
   );
 
   return (
@@ -275,7 +285,7 @@ export function TaskList({
           <label className="micro mb-1 block" htmlFor="task-list-sort">
             Sort
           </label>
-          <NativeSelect id="task-list-sort" value={sort} onChange={(e) => setSort(e.target.value)}>
+          <NativeSelect id="task-list-sort" value={sort} onChange={(e) => setSort(e.target.value as TaskSort)}>
             {SORT_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
@@ -287,6 +297,16 @@ export function TaskList({
 
       {query.isLoading ? (
         <LoadingRow label="Loading tasks…" />
+      ) : query.error ? (
+        /* A failed read is not an empty list. Falling through to the empty
+           state told the reader "Nothing on your list" — on a file's tab,
+           "nothing outstanding on this shipment" — when the truth was that
+           nobody knows yet. */
+        <ScreenError
+          message={errMsg(query.error)}
+          what="Tasks"
+          onRetry={() => void query.refetch()}
+        />
       ) : rows.length === 0 ? (
         <EmptyState
           title={
@@ -294,14 +314,18 @@ export function TaskList({
               ? tr("No tasks match “{q}”").replace("{q}", q)
               : filtered
                 ? "Nothing matches those filters"
-                : "Nothing on your list"
+                : fileFixed
+                  ? "No tasks on this file yet"
+                  : "Nothing on your list"
           }
           hint={
             q
               ? tr("Try another word — the search covers titles, notes, the linked file's reference, its client and step titles.")
               : filtered
                 ? "Clear a filter or two and it will come back."
-                : undefined
+                : fileFixed
+                  ? "Work people take on for this shipment — chasing a document, calling the client — shows here."
+                  : undefined
           }
           action={
             !filtered ? (

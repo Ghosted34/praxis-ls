@@ -46,6 +46,14 @@ const listTasks = asyncHandler(async (req, res) => {
       sort: q.sort,
       limit: q.limit,
       offset: q.offset,
+      // The operations-file narrowing (13920). The validator accepted both
+      // from the day the file's Tasks tab shipped, and this handler dropped
+      // them — so the tab of a brand-new file listed every task the reader
+      // could see, filed under other files, as if they were this file's work.
+      // A filter the validator admits and the handler forgets is worse than a
+      // 422: the answer looks complete.
+      dossier_id: q.dossier_id,
+      milestone_instance_id: q.milestone_instance_id,
       entity: q.entity_type && q.entity_id ? { entity_type: q.entity_type, entity_id: q.entity_id } : null,
     }),
   );

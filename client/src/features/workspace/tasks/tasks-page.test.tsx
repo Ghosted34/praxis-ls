@@ -31,6 +31,7 @@ import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
 
 import { apiClientMock, authContextMock, renderScreen } from "@/test/screen-harness";
+import * as apiClient from "@/lib/api-client";
 
 vi.mock("@/lib/api-client", async () => apiClientMock());
 vi.mock("@/app/auth/auth-context", async () => authContextMock());
@@ -191,5 +192,47 @@ describe("Tasks — the open task", () => {
       // One body, one shell: the pane is not mounted behind the sheet.
       expect(screen.queryByRole("complementary")).toBeNull();
     });
+  });
+});
+
+/*
+ * 5. A LINK'S AUDIENCE SURVIVES ARRIVAL. Before the board has answered, the
+ *    audiences on offer are the ["mine"] fallback, and narrowing against THAT
+ *    reset every `?audience=team|all` link to "mine" on the first render — an
+ *    Analytics drill-down then opened a different population than it counted,
+ *    and a file's Tasks tab opened a colleague's task as "not found".
+ */
+describe("Tasks — a link's audience", () => {
+  it("keeps ?audience=all when the server offers it, and never re-asks as 'mine'", async () => {
+    const spy = vi.spyOn(apiClient, "tenant");
+    renderScreen(<TasksPage />, {
+      path: "/workspace/tasks?audience=all",
+      routes: {
+        ...ROUTES,
+        "/workspace/tasks/board": {
+          board: { TO_DO: [], IN_PROGRESS: [TASK], IN_REVIEW: [], DONE: [] },
+          audience: "all",
+          audiences: ["mine", "all"],
+        },
+      },
+    });
+
+    await screen.findByRole("button", { name: CARD });
+    expect(await screen.findByText("Showing everyone")).toBeInTheDocument();
+    const boardReads = spy.mock.calls
+      .map(([p]) => String(p))
+      .filter((p) => p.startsWith("/workspace/tasks/board"));
+    expect(boardReads.length).toBeGreaterThan(0);
+    expect(boardReads.every((p) => p.includes("audience=all"))).toBe(true);
+    spy.mockRestore();
+  });
+
+  it("still narrows to 'mine' once the server says 'all' is not on offer", async () => {
+    renderScreen(<TasksPage />, {
+      path: "/workspace/tasks?audience=all",
+      routes: ROUTES, // audiences: ["mine"], audience: "mine"
+    });
+    await screen.findByRole("button", { name: CARD });
+    expect(screen.queryByText("Showing everyone")).toBeNull();
   });
 });

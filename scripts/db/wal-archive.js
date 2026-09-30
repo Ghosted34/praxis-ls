@@ -75,11 +75,13 @@ function sha256File(p) {
  * would be reported by Postgres as an unhelpful non-zero with no explanation.
  */
 async function archiveSegment(sourcePath, segmentName, deps = {}) {
-  /* eslint-disable global-require */
+  // Required lazily, and injectable, for one reason: Postgres calls this script
+  // once per completed segment, so the process start cost is paid on every
+  // archive — and the tests drive `archiveSegment` directly without a store, a
+  // bucket or an env file to load.
   const store = deps.store || require("../../src/services/platform/backup-storage.service");
   const prefix =
     deps.prefix || require("../../src/config/env").config.WAL_ARCHIVE_PREFIX || "wal";
-  /* eslint-enable global-require */
 
   if (!sourcePath || !segmentName) {
     return { code: 1, message: 'usage: wal-archive.js "%p" "%f" (called by Postgres archive_command)' };

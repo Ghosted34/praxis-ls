@@ -369,15 +369,27 @@ async function restoreTenant({
   let error = null;
   let backup = null;
 
-  // Resolved first, because it decides WHICH SERVER everything below talks to.
-  // A tenant moved off the default host is backed up correctly and must be
-  // restored and compared on that same host.
-  const metas = await registry.listActiveTenants();
-  const meta = metas.find((t) => t.slug === slug);
-  const at_ = meta ? { host: meta.db_host, port: meta.db_port } : {};
-  const liveSchema = (meta && meta.live_schema) || "live";
+  // Which SERVER everything below talks to, and under which SCHEMA NAME the
+  // copy is inspected. A tenant moved off the default host is backed up
+  // correctly and must be restored and compared on that same host.
+  //
+  // Declared out here because the cleanup in `finally` needs the host too, but
+  // RESOLVED INSIDE THE TRY: a registry lookup that fails is a drill that
+  // failed, and this function's contract is that it reports failure rather
+  // than throwing — a throw would take the scheduled drill down with it and
+  // record nothing at all.
+  let meta = null;
+  let at_ = {};
+  let liveSchema = "live";
 
   try {
+    const metas = (await registry.listActiveTenants()) || [];
+    meta = metas.find((t) => t.slug === slug) || null;
+    if (meta) {
+      at_ = { host: meta.db_host, port: meta.db_port };
+      liveSchema = meta.live_schema || "live";
+    }
+
     backup = await latestBackup(slug, at);
     if (!backup) throw new Error(`no successful PG_DUMP recorded for "${slug}"`);
     checks.backup = {

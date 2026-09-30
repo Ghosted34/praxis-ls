@@ -1,6 +1,10 @@
 import { useState } from "react";
 import { ops, fmtBytes, type ObjectRestoreResult, type RestoreAccepted } from "@/lib/ops-api";
 import { Button, Modal, Pill } from "@/components/ui";
+// Day-first, like every other date the console shows. A native
+// `datetime-local` renders its date part in the OS locale, which in a corridor
+// that reads dates day-first is a month-first date nobody notices is wrong.
+import { DateTimeField } from "@/components/DateTimeField";
 
 /**
  * The recovery dialogs — the only place in the console that puts data BACK
@@ -122,7 +126,7 @@ export function RestoreDatabaseModal({
         <span className="f" style={{ fontSize: 12.5 }}>
           Recover to an earlier point <span className="muted">(optional — leave blank for the latest dump)</span>
         </span>
-        <input type="datetime-local" value={at} onChange={(e) => setAt(e.target.value)} />
+        <DateTimeField value={at} onChange={setAt} aria-label="Recover to an earlier point" />
         <span className="muted" style={{ fontSize: 12 }}>
           Use this when the damage was written <em>before</em> the last backup, so the newest dump
           contains it too.

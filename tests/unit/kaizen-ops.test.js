@@ -68,10 +68,32 @@ const meta = (slug = "acme") => ({
   db_name: `tenant_${slug}`,
 });
 
-/** Make withTenantConnection hand the callback a fake client returning `rows`. */
+/**
+ * Make withTenantConnection hand the callback a fake client returning `rows`.
+ *
+ * The enumeration now walks a LIST of source tables (document_vault and
+ * comms_media — chat attachments were outside the backup entirely until that
+ * list existed) and asks `to_regclass` whether each one is present, so a
+ * tenant provisioned before a table existed is "no objects" rather than an
+ * error. A client that answers every query with the same rows would therefore
+ * answer the existence probe with a document row, which reads as "table
+ * absent" and yields nothing at all.
+ *
+ * So the fake answers by question: document_vault exists and holds `rows`,
+ * comms_media does not exist for these tenants. That keeps each test's subject
+ * one table's worth of objects, which is what they were written to assert.
+ */
 const withRows = (rows) =>
   registry.withTenantConnection.mockImplementation(async (m, env, fn) =>
-    fn({ query: async () => ({ rows }) }),
+    fn({
+      query: async (sql, params) => {
+        if (/to_regclass/.test(sql)) {
+          const table = params && params[0];
+          return { rows: [{ t: table === "document_vault" ? "document_vault" : null }] };
+        }
+        return { rows };
+      },
+    }),
   );
 
 beforeEach(() => {

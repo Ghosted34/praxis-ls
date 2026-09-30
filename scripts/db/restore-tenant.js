@@ -136,6 +136,19 @@ async function cmdHistory() {
           `  trial balance : ${c.trial_balance.balanced === null ? "not checked" : c.trial_balance.balanced ? "balanced" : "OUT OF BALANCE"}`,
         );
       }
+      if (c.documents) {
+        const d = c.documents;
+        console.warn(
+          `  documents     : ${
+            d.ok === null
+              ? d.note || "nothing to check"
+              : d.ok
+                ? `${d.checked} sampled, all recovered from the offsite copy`
+                : `${d.failures.length} of ${d.sampled} COULD NOT BE RECOVERED`
+          }`,
+        );
+        for (const f of d.failures || []) console.warn(`      ${f.storage_path} — ${f.reason}`);
+      }
       if (result.error) console.warn(`  error         : ${result.error}`);
     }
 

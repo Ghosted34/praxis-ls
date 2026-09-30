@@ -285,14 +285,14 @@ Rationale quoted in-file: *"A drill that could touch the live tenant database is
 > |---|---|---|
 > | **F1** | WAL archiver called its storage function with the arguments reversed — point-in-time recovery could never have worked | ✅ **Fixed** (+7 tests) |
 > | **F2** | "Apply retention" only ever pruned database dumps; the change-log archive grew forever | ✅ **Fixed** |
-> | **F3** | Encryption at rest and a delete-proof bucket are assumed, never set or verified | ⬜ Open — **B** |
-> | **F4** | Restore assumes every tenant is on the default database server; backup does not | ⬜ Open — **A** |
+> | **F3** | Encryption at rest and a delete-proof bucket are assumed, never set or verified | ⬜ **Open — needs a decision from you** |
+> | **F4** | Restore assumes every tenant is on the default database server; backup does not | ✅ **Fixed** |
 > | **F5** | Documents could be backed up but never restored | ✅ **Fixed** (+9 tests) |
-> | **F6** | The rehearsal checks the restored copy's `live` schema by hard-coded name, while reading the source by its configured name | ⬜ Open — **E** (small) |
-> | **F7** | A real recovery stops at the restored database; the cutover steps are undocumented | ⬜ Open — **C** |
+> | **F6** | The rehearsal checks the restored copy's `live` schema by hard-coded name, while reading the source by its configured name | ✅ **Fixed** |
+> | **F7** | A real recovery stops at the restored database; the cutover steps are undocumented | ◐ **Written** (runbook §4.3a) — needs one rehearsal |
 > | **F8** | `DEPLOYMENT.md` advertised a manual `pg_dumpall` as the backup | ✅ **Fixed** |
 > | **M1** | Chat photos, voice notes and video were outside the backup entirely | ✅ **Fixed** |
-> | — | The monthly rehearsal still proves only the database, not documents | ⬜ Open — **D** |
+> | — | The monthly rehearsal still proves only the database, not documents | ✅ **Fixed** (+5 tests) |
 
 
 **F1 — `wal-archive.js` calls `putStream` with reversed arguments (breaks PITR).**
@@ -351,16 +351,47 @@ Files: `src/services/platform/backup-storage.service.js` (`pruneBackups`), `src/
 
 **Checks run:** the new tests pass (16), migration numbering, reversibility, idempotency, constraint-guard, destructive-migration, silent-catch, write-route-validator and env-template gates all pass. The wider suite and ESLint could not be run here — this sandbox has no network access to install dependencies — so they should be confirmed by CI.
 
-### Still open — deliberately not done in this pass
+### Second pass — A, D, E closed; C written
 
-| # | What | Why it was left |
+**A. The restore now follows the tenant to its own database server.** Backups
+already looked up which server a tenant lives on; restores assumed the default.
+Identical today, and silently wrong the first time a tenant is moved — the
+rehearsal would have built its test copy on the wrong machine, compared it
+against a source it could not reach, and still said "passed". The server now
+travels with the tenant through every step: creating the copy, restoring into
+it, reading the original, and dropping the copy afterwards. Defaults are
+unchanged, so nothing about today's single-server setup behaves differently.
+*Files:* `src/services/platform/restore.service.js`, `src/services/platform/migrator.js`.
+*No direct test:* proving it needs a second Postgres server in the fixture. The
+defaults are covered by the existing tests; the change is small and readable.
+
+**D. The monthly rehearsal now also proves documents come back.** It picks a
+few documents at random from the restored copy, fetches them from the offsite
+store, and checks each one against the fingerprint the database says it should
+have. A document that cannot be fetched, or comes back altered, now fails the
+drill — because that is exactly "the backup does not restore". A tenant with no
+hashed documents is reported as "nothing to check", not quietly passed. Visible
+in the console's drill **Checks** panel and in the command-line output.
+*Files:* `src/services/platform/restore.service.js`, `scripts/db/restore-tenant.js`, `tests/unit/backup-restore.test.js` (+5 tests).
+
+**E. The rehearsal no longer hard-codes the schema name** on the restored side
+while reading the original by its configured name.
+
+**C. The recovery procedure is now written down** — `doc/INCIDENT_RUNBOOK.md`
+§4.3a, end to end: decide the recovery point, dump the damaged state first,
+park the tenant, restore into a new database, re-point the registry, re-issue
+credentials and the pooler, apply missed migrations, restore documents *after*
+the database, verify by downloading one, then lift the window and say plainly
+what was lost. It is marked **written but not rehearsed**, because it has not
+been walked end to end on a copy — see "needs your input" below.
+
+### Needs a decision from you
+
+| | What I need | Why I stopped |
 |---|---|---|
-| **A** | **Restore assumes every tenant is on the default database host.** Backups honour each tenant's own host; the restore path does not. Harmless today (one host), wrong the day a tenant is moved. | Touches the shared database-creation helper, so it wants its own change and its own test rather than being folded into a backup fix. |
-| **B** | **Encryption at rest and a write-once bucket are assumed, not enforced.** The plan calls for both; nothing in the code sets or verifies them. | Half policy (bucket configuration), half code. Worth doing as one deliberate piece with the settings probe reporting the answer, so nobody has to assume again. |
-| **C** | **A real database recovery stops at the restored copy.** Re-pointing the tenant, re-issuing credentials, running outstanding migrations and cutting over are undocumented. | Needs to be written as a numbered procedure in the incident runbook *and walked through once on a drill copy* — writing it without rehearsing it would repeat the mistake this whole area exists to correct. |
-| **D** | **The monthly rehearsal still only rehearses the database.** Now that documents can be restored, the drill should also restore one document to a temporary location and check its fingerprint. | Small and worth doing next; keeping it separate keeps this change reviewable. |
-| **E** | **The rehearsal hard-codes the name `live` when inspecting the restored copy**, while reading the original by its configured schema name. Identical today for every tenant, so it changes nothing now — but a tenant configured differently would be compared against the wrong thing and the drill would still say "passed". | One-line-ish, but it needs a test with a differently-named schema to be worth anything, and it is the least likely of these to bite. |
-
+| **F3 / B — encryption and a delete-proof backup bucket** | Which cloud account the backups live in, who holds the key, and whether the bucket can be switched to versioned + delete-protected | The plan says backups sit in a *separate* account so stolen app credentials cannot destroy them, and that they are encrypted with a key we hold. The code sets neither, and I cannot pick an account, create a key, or change bucket policy from here. Once you name the account and key, the code side is an afternoon: set encryption on upload, and make the existing backup-destination self-test report versioning and delete-protection on screen so it stops being folklore. |
+| **C — rehearsing the recovery** | An hour, a throwaway tenant copy, and someone who can approve doing it | A recovery procedure nobody has run is the same category of claim as a backup nobody has restored. I can drive it; it needs a scheduled window and your go-ahead, because it touches the registry and the pooler. |
+| **The restore button** | A product decision — see below | Adding a button that can overwrite live tenant data is a risk posture question, not an engineering one. My recommendation is in §10. |
 
 ## 8. Follow-up questions, answered against the code
 
@@ -543,3 +574,65 @@ rclone can only ever find the first kind. A blind mirror would have copied our c
 That keeps the speed and the honesty. The trigger to revisit: the object sync failing to finish inside its nightly window, or a full-tenant document restore taking longer than the one-hour recovery target. Both are already measured.
 
 *(For completeness: the same reasoning was applied, harder, to `pgBackRest` and `wal-g` for the change-log archive. Same conclusion, same recorded trigger — if the archive starts falling behind, the lag figure on the screen is the signal, and the bucket layout is deliberately unchanged so swapping the tool in later doesn't invalidate anything already stored.)*
+
+---
+
+## 10. The restore button — what exists, and what I recommend
+
+### What is on screen today
+
+| Action | Button? | Touches live data? |
+|---|---|---|
+| Rehearse a restore (into a throwaway copy) | ✅ "Run drill", and "Drill" per tenant | No |
+| Copy documents offsite / check them | ✅ "Sync" / "Scan" per tenant | No |
+| Restore a tenant's **database** for real | ❌ command line only | Yes |
+| Restore a tenant's **documents** for real | ❌ command line only | Yes |
+
+So there is a restore, twice over, and both are behind a terminal. The database
+one additionally refuses any destination that is not a throwaway unless the
+operator passes `--i-am-recovering`.
+
+### Why it was built that way
+
+A console button that can overwrite a live tenant's data is a button that will
+eventually be clicked on the wrong row — and the thing that makes the *monthly
+automatic rehearsal* acceptable is that nothing in that path can reach live
+data. Put a real-restore button next to it and every drill inherits the risk of
+the button beside it.
+
+There is also a practical point: a real recovery is not one action. It is a
+sequence — park the tenant, restore, re-point, re-credential, migrate, restore
+documents, verify, unpark (runbook §4.3a). A button that does step 2 and leaves
+the other seven to someone improvising under pressure is worse than no button,
+because it *looks* like the whole thing.
+
+### What is genuinely worth reconsidering
+
+The two halves are not equally dangerous, and treating them the same is the
+weakest part of the current position:
+
+- **Database restore — keep it off the console.** Irreversible, replaces
+  everything, and only correct as part of the longer sequence.
+- **Document restore — a safe version could reasonably be a button.** The
+  default mode only puts back files that are *missing*; it never overwrites a
+  surviving file, and it verifies each fingerprint before writing. "Put back
+  the documents this tenant is missing" is close to un-dangerous, and it is the
+  single most likely thing support will need at short notice.
+
+### My recommendation — three options, in order of preference
+
+1. **Add a document-restore button only, in its safe mode** (missing files
+   only, no overwrite), behind `ops.operate`, with a dry-run preview shown
+   before it runs. Keep database restore on the command line. *Roughly half a
+   day: the service, the safety and the tests already exist — it needs a route,
+   a confirmation dialog and a results panel.*
+2. **Change nothing**, and rely on the runbook plus the rehearsal. Defensible,
+   and cheapest.
+3. **Add a database-restore button too.** I would argue against it. If it is
+   wanted anyway, the conditions I would insist on: it restores into a *new*
+   database and never over the existing one, it is gated behind a separate
+   capability that is not `ops.operate`, it requires typing the tenant slug to
+   confirm, and it says on screen that steps 3–8 of the runbook still have to
+   be done by hand.
+
+**Tell me which and I will build it.** My vote is option 1.

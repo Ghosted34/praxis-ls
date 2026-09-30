@@ -59,10 +59,23 @@ const CORE_TABLES = [
   "document_vault",
 ];
 
-const superuserClient = (database) =>
+/**
+ * A superuser connection to `database`, on `at.host` when the tenant lives
+ * somewhere other than the default server.
+ *
+ * THE DEFAULT USED TO BE THE ONLY OPTION, AND THAT WAS A TRAP.
+ *
+ *   `spawnPgDump` reads `meta.db_host` per tenant; every connection here
+ *   assumed `TENANT_DB_HOST_DEFAULT`. Identical while the whole fleet is on
+ *   one server — and silently wrong the day a tenant is moved, because the
+ *   drill would create its scratch copy on the default server, compare it
+ *   against a source it could not reach, and report the result as though it
+ *   had proved something.
+ */
+const superuserClient = (database, at = {}) =>
   new Client({
-    host: config.TENANT_DB_HOST_DEFAULT,
-    port: config.TENANT_DB_PORT_DEFAULT,
+    host: at.host || config.TENANT_DB_HOST_DEFAULT,
+    port: at.port || config.TENANT_DB_PORT_DEFAULT,
     database,
     user: config.TENANT_DB_SUPERUSER,
     password: config.TENANT_DB_SUPERUSER_PASSWORD,
@@ -108,7 +121,7 @@ function keyFromLocation(location) {
  *   next to the full database copy the drill is already creating, and it is how
  *   pg_restore is designed to be used.
  */
-async function runPgRestore(dumpPath, targetDb) {
+async function runPgRestore(dumpPath, targetDb, at = {}) {
   const args = [
     "--format=custom",
     "--no-owner",
@@ -117,8 +130,9 @@ async function runPgRestore(dumpPath, targetDb) {
     // fatal (extensions, comments on objects owned elsewhere). --exit-on-error
     // is deliberately NOT set; the probes decide whether the restore was good,
     // because pg_restore's own exit code is too blunt in both directions.
-    `--host=${config.TENANT_DB_HOST_DEFAULT}`,
-    `--port=${config.TENANT_DB_PORT_DEFAULT}`,
+    // Restore onto the server the tenant actually lives on, not the default.
+    `--host=${at.host || config.TENANT_DB_HOST_DEFAULT}`,
+    `--port=${at.port || config.TENANT_DB_PORT_DEFAULT}`,
     `--username=${config.TENANT_DB_SUPERUSER}`,
     `--dbname=${targetDb}`,
     dumpPath,
@@ -188,9 +202,13 @@ async function withLocalDump(key, fn) {
  * each one is a full copy of a tenant, so this is disk that disappears without
  * an obvious cause. Only ever touches names carrying RESTORE_DRILL_DB_PREFIX.
  */
-async function cleanupDrillDatabases({ olderThanMinutes = 0 } = {}) {
+async function cleanupDrillDatabases({ olderThanMinutes = 0, host = null, port = null } = {}) {
+  // Sweeps ONE server — the default unless told otherwise. With the fleet on a
+  // single host that is every drill database there is; if tenants are ever
+  // split across servers this must be called per server, and saying so here is
+  // cheaper than rediscovering it as unexplained disk usage on host two.
   const prefix = config.RESTORE_DRILL_DB_PREFIX;
-  const admin = superuserClient("postgres");
+  const admin = superuserClient("postgres", { host, port });
   await admin.connect();
   const dropped = [];
   try {
@@ -254,6 +272,72 @@ async function trialBalance(cli, schema) {
 }
 
 /**
+ * Spot-check that documents can actually be brought back, not just the rows
+ * that describe them.
+ *
+ * WHY THE DRILL NEEDS THIS AT ALL
+ *
+ *   The rehearsal proved the database could be restored and said nothing about
+ *   the files it points at — so "we have rehearsed our recovery" was only ever
+ *   true of half the system. A tenant whose database restores perfectly while
+ *   its documents are unreachable is not recovered; the app comes back up and
+ *   fails on the first download.
+ *
+ *   The probe is deliberately cheap: a handful of documents chosen at random,
+ *   fetched from the OFFSITE copy and checked against the fingerprint the
+ *   restored database says they should have. Random rather than newest,
+ *   because the newest are the ones most likely to be fine.
+ *
+ * WHAT COUNTS AS FAILURE
+ *
+ *   A document that cannot be fetched, or that comes back with the wrong
+ *   fingerprint, fails the drill — that is precisely "the backup does not
+ *   restore". A tenant with no hashed documents yet is reported as "nothing to
+ *   check", not as a pass and not as a failure: claiming either would be
+ *   inventing a result.
+ */
+async function documentSpotCheck(cli, schema, { sample = 3 } = {}) {
+  let rows;
+  try {
+    ({ rows } = await cli.query(
+      `SELECT storage_path, content_hash
+         FROM "${schema}".document_vault
+        WHERE content_hash IS NOT NULL AND storage_path IS NOT NULL AND storage_path <> ''
+        ORDER BY random()
+        LIMIT $1`,
+      [sample],
+    ));
+  } catch (err) {
+    return { ok: null, checked: 0, note: `could not read document_vault: ${err.message}` };
+  }
+
+  if (!rows.length) {
+    return { ok: null, checked: 0, note: "no hashed documents in the restored copy — nothing to check" };
+  }
+
+  const failures = [];
+  let checked = 0;
+
+  for (const row of rows) {
+    const key = `objects/${row.storage_path}`;
+    try {
+      const src = await store.openStream(key);
+      const chunks = [];
+      for await (const chunk of src) chunks.push(Buffer.from(chunk));
+      const actual = crypto.createHash("sha256").update(Buffer.concat(chunks)).digest("hex");
+      checked++;
+      if (actual !== row.content_hash) {
+        failures.push({ storage_path: row.storage_path, reason: "fingerprint mismatch" });
+      }
+    } catch (err) {
+      failures.push({ storage_path: row.storage_path, reason: `not in the offsite copy: ${err.message}` });
+    }
+  }
+
+  return { ok: failures.length === 0, sampled: rows.length, checked, failures };
+}
+
+/**
  * Restore a tenant's backup into a database and verify it.
  *
  * `into` defaults to a drill-prefixed scratch database that is dropped
@@ -285,6 +369,14 @@ async function restoreTenant({
   let error = null;
   let backup = null;
 
+  // Resolved first, because it decides WHICH SERVER everything below talks to.
+  // A tenant moved off the default host is backed up correctly and must be
+  // restored and compared on that same host.
+  const metas = await registry.listActiveTenants();
+  const meta = metas.find((t) => t.slug === slug);
+  const at_ = meta ? { host: meta.db_host, port: meta.db_port } : {};
+  const liveSchema = (meta && meta.live_schema) || "live";
+
   try {
     backup = await latestBackup(slug, at);
     if (!backup) throw new Error(`no successful PG_DUMP recorded for "${slug}"`);
@@ -297,14 +389,12 @@ async function restoreTenant({
     // Source counts BEFORE the restore, so the comparison is against the live
     // tenant as it is now. Drift between the dump and now is expected and is
     // why the row-count probe uses a tolerance rather than equality.
-    const metas = await registry.listActiveTenants();
-    const meta = metas.find((t) => t.slug === slug);
     let sourceCounts = null;
     if (meta) {
-      const src = superuserClient(meta.db_name);
+      const src = superuserClient(meta.db_name, at_);
       await src.connect();
       try {
-        sourceCounts = await tableCounts(src, meta.live_schema || "live");
+        sourceCounts = await tableCounts(src, liveSchema);
       } finally {
         await src.end();
       }
@@ -346,7 +436,7 @@ async function restoreTenant({
     const pre = await require("./backup.service").preflight();
     if (!pre.ok) throw new Error(`restore tooling unusable: ${pre.error}`);
 
-    await m.ensureDatabase(target);
+    await m.ensureDatabase(target, at_);
 
     const restored = await withLocalDump(key, async (dumpPath, staged) => {
       checks.staging = staged;
@@ -355,7 +445,7 @@ async function restoreTenant({
           `staged ${staged.bytes_staged} of ${backup.bytes} bytes to ${dumpPath} — read from the store was short`,
         );
       }
-      return runPgRestore(dumpPath, target);
+      return runPgRestore(dumpPath, target, at_);
     });
 
     checks.pg_restore = {
@@ -363,20 +453,27 @@ async function restoreTenant({
       stderr_tail: restored.stderr.slice(-500) || null,
     };
 
-    const cli = superuserClient(target);
+    const cli = superuserClient(target, at_);
     await cli.connect();
     try {
+      // The restored copy is inspected under the SAME schema name the source
+      // is read with. It used to be the literal 'live' on this side and
+      // `meta.live_schema` on the other — identical for every tenant today,
+      // and a comparison against the wrong thing (reported as a pass) for any
+      // tenant configured differently.
       const { rows: schemas } = await cli.query(
-        "SELECT nspname FROM pg_namespace WHERE nspname IN ('live','sandbox')",
+        "SELECT nspname FROM pg_namespace WHERE nspname IN ($1,'sandbox')",
+        [liveSchema],
       );
       checks.schemas_present = schemas.map((r) => r.nspname);
 
       const { rows: tabs } = await cli.query(
-        "SELECT count(*)::int AS n FROM information_schema.tables WHERE table_schema='live'",
+        "SELECT count(*)::int AS n FROM information_schema.tables WHERE table_schema=$1",
+        [liveSchema],
       );
       checks.live_table_count = tabs[0].n;
 
-      const restoredCounts = await tableCounts(cli, "live");
+      const restoredCounts = await tableCounts(cli, liveSchema);
       checks.row_counts = { source: sourceCounts, restored: restoredCounts };
 
       // 5% tolerance: the source keeps taking writes after the dump was taken,
@@ -393,21 +490,33 @@ async function restoreTenant({
             return Math.abs(s - r) / s <= 0.05;
           });
 
-      checks.trial_balance = await trialBalance(cli, "live");
+      checks.trial_balance = await trialBalance(cli, liveSchema);
+
+      // The other half of a recovery: the files the rows point at.
+      checks.documents = await documentSpotCheck(cli, liveSchema);
 
       ok =
         checks.live_table_count > 0 &&
-        checks.schemas_present.includes("live") &&
+        checks.schemas_present.includes(liveSchema) &&
         checks.row_counts_ok !== false &&
-        checks.trial_balance.balanced !== false;
+        checks.trial_balance.balanced !== false &&
+        // `null` means "nothing to check", which must not read as a failure.
+        checks.documents.ok !== false;
 
       // A restore that produced no tables is a failed restore, and pg_restore's
       // stderr is the only thing that says WHY. Surfacing it as the error means
       // the drill result is self-explanatory instead of sending someone to the
       // logs of a job that ran a month ago.
+      if (!ok && checks.documents && checks.documents.ok === false) {
+        error =
+          `the database restored but ${checks.documents.failures.length} of ` +
+          `${checks.documents.sampled} sampled document(s) could not be recovered: ` +
+          checks.documents.failures.map((f) => `${f.storage_path} (${f.reason})`).join("; ");
+      }
+
       if (!ok && checks.live_table_count === 0) {
         error =
-          `pg_restore produced no tables in "live" (exit ${restored.code})` +
+          `pg_restore produced no tables in "${liveSchema}" (exit ${restored.code})` +
           (restored.stderr ? `: ${restored.stderr.slice(-800)}` : " and wrote nothing to stderr");
       }
     } finally {
@@ -420,7 +529,7 @@ async function restoreTenant({
     if (drop) {
       // Only ever drop a drill-prefixed database, however this was called.
       if (target.startsWith(prefix)) {
-        const admin = superuserClient("postgres");
+        const admin = superuserClient("postgres", at_);
         try {
           await admin.connect();
           await admin.query(`DROP DATABASE IF EXISTS "${target}" WITH (FORCE)`);
@@ -564,5 +673,9 @@ module.exports = {
   cleanupDrillDatabases,
   latestBackup,
   keyFromLocation,
+  // Exported for tests: it is the probe that decides whether the DOCUMENT half
+  // of a recovery is real, and it is worth pinning independently of a full
+  // drill (which needs a Postgres server, a dump and two binaries to run).
+  documentSpotCheck,
   CORE_TABLES,
 };

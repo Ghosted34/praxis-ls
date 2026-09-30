@@ -500,6 +500,47 @@ async function pruneRetention({
   return { removed, kept: kept.length };
 }
 
+/**
+ * Everything retention is supposed to sweep, in one call.
+ *
+ * WHY THIS EXISTS RATHER THAN THREE CALLERS EACH REMEMBERING
+ *
+ *   `pruneRetention` defaults to `prefix: "pg/"`, and every caller — the
+ *   nightly job, the console button, the CLI — used the default. So the WAL
+ *   archive was never pruned by anything and grew without bound, quietly, in
+ *   the same bucket the dumps are billed from. A default that is right for one
+ *   prefix and silently wrong for the rest is a default worth taking away from
+ *   callers: they ask for "apply retention", and what that MEANS lives here.
+ *
+ * WHY WAL IS SWEPT ON THE SAME WINDOW AS THE DUMPS
+ *
+ *   A WAL segment is only useful replayed on top of a base backup. Once the
+ *   oldest dump it could be replayed onto has aged out, the segment can reach
+ *   nothing — it is cost with no recovery value.
+ *
+ * WHY `objects/` IS NOT SWEPT, AND THAT IS DELIBERATE
+ *
+ *   Those are the offsite copies of user documents, and the whole reason they
+ *   exist is that the live copy might be gone. Ageing them out by time would
+ *   mean the backup quietly destroying the last surviving copy of a file
+ *   somebody deleted eleven months ago — the exact event the copy is for.
+ *   Object retention, if it is ever wanted, is a separate decision with its
+ *   own window and its own conversation, not a side effect of this one.
+ */
+async function pruneBackups(opts = {}) {
+  const dumps = await pruneRetention({ ...opts, prefix: "pg/" });
+  const wal = await pruneRetention({ ...opts, prefix: "wal/" });
+  return {
+    dumps,
+    wal,
+    removed: dumps.removed.length + wal.removed.length,
+    kept: dumps.kept + wal.kept,
+    // Named in the result so the console can say WHY the object copies were
+    // untouched instead of leaving an operator to wonder whether it failed.
+    not_pruned: ["objects/ — offsite document copies are never time-expired"],
+  };
+}
+
 module.exports = {
   putStream,
   openStream,
@@ -508,6 +549,7 @@ module.exports = {
   list,
   remove,
   pruneRetention,
+  pruneBackups,
   assertSafeKey,
   describe,
   // `driver` was a constant read at import time. It is a function now because

@@ -131,8 +131,12 @@ const backupAll = asyncHandler(async (req, res) => {
   res.status(202).json({ data: { accepted: true, kind: "PG_DUMP", scope: "fleet" } });
 });
 
+// `pruneBackups`, not `pruneRetention`: the button says "apply retention", and
+// retention means the dumps AND the WAL archive. Calling the single-prefix
+// helper here is how the console spent months reporting a completed sweep that
+// had never touched `wal/`.
 const backupPrune = asyncHandler(async (_req, res) =>
-  res.json({ data: await store.pruneRetention() }),
+  res.json({ data: await store.pruneBackups() }),
 );
 
 /* ── Object backup + integrity (WS-B2 / WS-B4) ──────────────────────────── */

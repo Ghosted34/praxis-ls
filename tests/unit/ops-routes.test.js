@@ -88,6 +88,15 @@ jest.mock("../../src/services/platform/maintenance.service", () => ({
 }));
 jest.mock("../../src/services/platform/backup-storage.service", () => ({
   pruneRetention: jest.fn(async () => ({ removed: [], kept: 3 })),
+  // The route calls `pruneBackups` — retention means the dumps AND the WAL
+  // archive, not just the prefix `pruneRetention` happens to default to.
+  pruneBackups: jest.fn(async () => ({
+    dumps: { removed: [], kept: 3 },
+    wal: { removed: [], kept: 1 },
+    removed: 0,
+    kept: 4,
+    not_pruned: ["objects/ — offsite document copies are never time-expired"],
+  })),
 }));
 jest.mock("../../src/services/tenant/registry.service", () => ({
   resolveBySlug: jest.fn(async (slug) =>

@@ -106,6 +106,39 @@ const BODY_SCHEMAS = {
     // which is how you verify a specific artefact after a suspicious run.
     at: isoDateTime.nullish(),
   }),
+
+  /**
+   * A REAL recovery, not a rehearsal.
+   *
+   * `confirm_slug` is typed by the operator and must equal the tenant in the
+   * URL. It is not a formality: every other destructive console action is one
+   * click away from the row above it, and the failure this guards against is
+   * recovering the wrong tenant — which is not an error anyone notices until
+   * that tenant's users report missing work. Typing the name is the cheapest
+   * way to make the target a thing the operator STATED rather than a thing
+   * they landed on.
+   *
+   * There is deliberately NO destination parameter. The server names the new
+   * database itself, so no request can ask to be written over an existing one.
+   */
+  restoreRun: z.object({
+    confirm_slug: slug,
+    // Recover to an older dump when the damage predates the latest one.
+    at: isoDateTime.nullish(),
+  }),
+
+  /**
+   * Restoring documents into primary storage.
+   *
+   * Dry run is the DEFAULT, and the console always runs one first. There is no
+   * `force`: forcing overwrites files that survived, and a surviving file is
+   * never older than the backup — so overwriting can only lose data. That
+   * remains a command-line decision made by someone who has read why.
+   */
+  objectRestoreRun: z.object({
+    confirm_slug: slug,
+    dry_run: z.boolean().default(true),
+  }),
 };
 
 const PARAM_SCHEMAS = {

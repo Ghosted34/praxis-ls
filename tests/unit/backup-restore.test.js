@@ -385,6 +385,66 @@ describe("restore drill safety", () => {
   });
 });
 
+describe("the drill also rehearses documents", () => {
+  /**
+   * WHY THIS PROBE EXISTS
+   *
+   *   The rehearsal proved the database came back and said nothing about the
+   *   files it points at, so "we have rehearsed our recovery" was only ever
+   *   true of half the system. A tenant whose rows restore perfectly while its
+   *   documents are unreachable is not recovered — the app returns and fails
+   *   on the first download.
+   */
+  const sha = require("crypto").createHash("sha256").update(Buffer.from("doc")).digest("hex");
+
+  /** A restored-copy connection that answers the probe's one query. */
+  const clientWith = (rows) => ({ query: jest.fn(async () => ({ rows })) });
+
+  test("passes when the sampled documents come back intact", async () => {
+    store.openStream.mockResolvedValue(Readable.from([Buffer.from("doc")]));
+    const r = await restore.documentSpotCheck(
+      clientWith([{ storage_path: "vault/a.pdf", content_hash: sha }]),
+      "live",
+    );
+    expect(r.ok).toBe(true);
+    expect(r.checked).toBe(1);
+  });
+
+  test("fails when a document is not in the offsite copy", async () => {
+    store.openStream.mockRejectedValue(new Error("no such key"));
+    const r = await restore.documentSpotCheck(
+      clientWith([{ storage_path: "vault/gone.pdf", content_hash: sha }]),
+      "live",
+    );
+    expect(r.ok).toBe(false);
+    expect(r.failures[0].reason).toMatch(/not in the offsite copy/);
+  });
+
+  test("fails when the offsite copy no longer matches its fingerprint", async () => {
+    store.openStream.mockResolvedValue(Readable.from([Buffer.from("tampered")]));
+    const r = await restore.documentSpotCheck(
+      clientWith([{ storage_path: "vault/a.pdf", content_hash: sha }]),
+      "live",
+    );
+    expect(r.ok).toBe(false);
+    expect(r.failures[0].reason).toMatch(/fingerprint mismatch/);
+  });
+
+  test("a tenant with no hashed documents is 'nothing to check', not a pass", async () => {
+    // Claiming either a pass or a failure here would be inventing a result.
+    const r = await restore.documentSpotCheck(clientWith([]), "live");
+    expect(r.ok).toBeNull();
+    expect(r.checked).toBe(0);
+  });
+
+  test("an unreadable document table is reported, not thrown", async () => {
+    const cli = { query: jest.fn(async () => { throw new Error("relation does not exist"); }) };
+    const r = await restore.documentSpotCheck(cli, "live");
+    expect(r.ok).toBeNull();
+    expect(r.note).toMatch(/could not read document_vault/);
+  });
+});
+
 describe("retention", () => {
   // The real pruneRetention is under test here, so un-mock it for this block.
   const realStore = jest.requireActual(

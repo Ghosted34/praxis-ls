@@ -103,6 +103,10 @@ nav.tabs a.active { background: var(--panel-2); color: var(--ink); box-shadow: i
 .banner { display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; border-radius: 9px; font-size: 12.5px; border: 1px solid; margin-bottom: 16px; }
 .banner.info { background: rgba(76,141,255,.08); border-color: rgba(76,141,255,.28); color: #bcd0ff; }
 .banner.warn { background: rgba(232,161,58,.08); border-color: rgba(232,161,58,.3); color: #f2c078; }
+/* Used where the reassurance IS the message — e.g. a recovery that restored
+   into a new database and left the live one untouched. Green there is not
+   decoration: it is the difference between "done" and "nothing was destroyed". */
+.banner.ok { background: rgba(62,190,125,.08); border-color: rgba(62,190,125,.3); color: #86e0ad; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
 .stat { background: linear-gradient(180deg, var(--panel), var(--bg-2)); border: 1px solid var(--line); border-radius: var(--radius); padding: 15px 16px; }

@@ -78,9 +78,12 @@ module.exports = async function backupRun(job) {
   }
 
   if (kind === "prune") {
-    const r = await store.pruneRetention();
-    logger.info({ removed: r.removed.length, kept: r.kept }, "backup retention applied");
-    return { removed: r.removed.length, kept: r.kept };
+    const r = await store.pruneBackups();
+    logger.info(
+      { dumps: r.dumps.removed.length, wal: r.wal.removed.length, kept: r.kept },
+      "backup retention applied",
+    );
+    return { removed: r.removed, kept: r.kept };
   }
 
   if (kind === "drill") {

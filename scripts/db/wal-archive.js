@@ -43,42 +43,61 @@
  */
 "use strict";
 
-const path = require("path");
-require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
+/**
+ * WHY THE LOGIC IS AN EXPORTED FUNCTION AND THE SCRIPT IS A THIN WRAPPER
+ *
+ *   It used to be a top-level async IIFE reading `process.argv` and calling
+ *   `process.exit`, which cannot be tested at all: there is no seam to hand a
+ *   fake store to, and no return value to assert on. That is how it shipped
+ *   with its two arguments the wrong way round — `putStream(key, readable)`
+ *   instead of `putStream(readable, key)` — a defect that disables WAL
+ *   archiving completely and announces itself only as a data volume filling
+ *   up days later.
+ *
+ *   `archiveSegment` takes its dependencies and returns `{ code, message }`.
+ *   The process boundary (argv in, stderr and exit code out) stays down at the
+ *   bottom where Postgres needs it, and the part that can be wrong is now the
+ *   part that is covered by tests/unit/wal-archive.test.js.
+ */
 
 const fs = require("fs");
 const crypto = require("crypto");
-const store = require("../../src/services/platform/backup-storage.service");
-const { config } = require("../../src/config/env");
-
-const [sourcePath, segmentName] = process.argv.slice(2);
-
-/** `wal/000000010000000000000003`. Kept flat: Postgres names sort lexically. */
-const keyFor = (name) => `${config.WAL_ARCHIVE_PREFIX || "wal"}/${name}`;
 
 function sha256File(p) {
   return crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex");
 }
 
-/** stderr, not stdout: Postgres logs archive_command's stderr. */
-const fail = (msg) => {
-  process.stderr.write(`wal-archive: ${msg}\n`);
-  process.exit(1);
-};
+/**
+ * Archive one segment.
+ *
+ * Returns `{ code, message }` rather than exiting: 0 archived (or already
+ * archived), 1 anything else. Never throws — a throw out of archive_command
+ * would be reported by Postgres as an unhelpful non-zero with no explanation.
+ */
+async function archiveSegment(sourcePath, segmentName, deps = {}) {
+  // Required lazily, and injectable, for one reason: Postgres calls this script
+  // once per completed segment, so the process start cost is paid on every
+  // archive — and the tests drive `archiveSegment` directly without a store, a
+  // bucket or an env file to load.
+  const store = deps.store || require("../../src/services/platform/backup-storage.service");
+  const prefix =
+    deps.prefix || require("../../src/config/env").config.WAL_ARCHIVE_PREFIX || "wal";
 
-(async () => {
   if (!sourcePath || !segmentName) {
-    fail('usage: wal-archive.js "%p" "%f" (called by Postgres archive_command)');
+    return { code: 1, message: 'usage: wal-archive.js "%p" "%f" (called by Postgres archive_command)' };
   }
   // A segment name is 24 hex characters, or a .backup / .history label. Anything
   // else is not something Postgres produced, and this argument becomes a
   // storage key.
   if (!/^[0-9A-F]{24}(\.[0-9A-F]{8}\.backup|\.history|\.partial)?$/i.test(segmentName)) {
-    fail(`refusing to archive an unrecognised segment name: ${segmentName}`);
+    return { code: 1, message: `refusing to archive an unrecognised segment name: ${segmentName}` };
   }
-  if (!fs.existsSync(sourcePath)) fail(`source file missing: ${sourcePath}`);
+  if (!fs.existsSync(sourcePath)) {
+    return { code: 1, message: `source file missing: ${sourcePath}` };
+  }
 
-  const key = keyFor(segmentName);
+  /** `wal/000000010000000000000003`. Kept flat: Postgres names sort lexically. */
+  const key = `${prefix}/${segmentName}`;
 
   try {
     // Rule 2. An identical re-upload is a retry and succeeds; a DIFFERENT file
@@ -88,29 +107,56 @@ const fail = (msg) => {
     if (existing) {
       const localSize = fs.statSync(sourcePath).size;
       if (existing.bytes === localSize) {
-        process.stderr.write(`wal-archive: ${segmentName} already archived (identical size) — ok\n`);
-        process.exit(0);
+        return { code: 0, message: `${segmentName} already archived (identical size) — ok` };
       }
-      fail(
-        `${segmentName} already exists in the archive with a DIFFERENT size ` +
+      return {
+        code: 1,
+        message:
+          `${segmentName} already exists in the archive with a DIFFERENT size ` +
           `(archived ${existing.bytes}, local ${localSize}). Refusing to overwrite — ` +
           `this usually means two servers are archiving to the same prefix.`,
-      );
+      };
     }
 
-    const result = await store.putStream(key, fs.createReadStream(sourcePath));
+    // ARGUMENT ORDER: `putStream(readable, key)`. Reversed — as this was — the
+    // key guard is handed a stream object, rejects it, archive_command exits 1
+    // for every segment forever, and Postgres correctly refuses to recycle the
+    // WAL it could not archive. Pinned by a test asserting the SHAPE of both
+    // arguments, because asserting that putStream was called would have passed
+    // against the broken version.
+    const result = await store.putStream(fs.createReadStream(sourcePath), key);
 
     // Verify what landed rather than trusting the upload. A truncated segment
     // is worse than a missing one: recovery replays it and stops mid-way,
     // reporting success up to a point that is not the point you asked for.
     const localHash = sha256File(sourcePath);
     if (result && result.checksum && result.checksum !== localHash) {
-      fail(`checksum mismatch for ${segmentName} — archived copy does not match the source`);
+      return {
+        code: 1,
+        message: `checksum mismatch for ${segmentName} — archived copy does not match the source`,
+      };
     }
 
-    process.exit(0);
+    return { code: 0, message: null };
   } catch (err) {
     // Rule 1. Postgres will retry; the WAL file stays on disk until it succeeds.
-    fail(`${segmentName}: ${err.message}`);
+    return { code: 1, message: `${segmentName}: ${err.message}` };
   }
-})();
+}
+
+module.exports = { archiveSegment };
+
+/* ── process boundary ───────────────────────────────────────────────────── */
+
+if (require.main === module) {
+  const path = require("path");
+  require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
+
+  const [sourcePath, segmentName] = process.argv.slice(2);
+
+  archiveSegment(sourcePath, segmentName).then(({ code, message }) => {
+    // stderr, not stdout: Postgres logs archive_command's stderr.
+    if (message) process.stderr.write(`wal-archive: ${message}\n`);
+    process.exit(code);
+  });
+}

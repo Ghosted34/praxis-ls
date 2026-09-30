@@ -57,6 +57,7 @@
     "db:restore:cleanup": "node scripts/db/restore-tenant.js --cleanup",
     "db:objects:sync": "node scripts/db/backup-tenant.js --objects",
     "db:objects:scan": "node scripts/db/backup-tenant.js --scan",
+    "db:objects:restore": "node scripts/db/restore-objects.js",
     "db:pgbouncer-auth": "node scripts/db/setup-pgbouncer-auth.js",
     "db:pgbouncer-auth:check": "node scripts/db/setup-pgbouncer-auth.js --check",
     "ops:uptime-probe": "node scripts/ops/uptime-probe.js",

@@ -74,8 +74,11 @@ async function cmdStatus() {
     } else if (has("--status")) {
       process.exitCode = (await cmdStatus()) ? 0 : 1;
     } else if (has("--prune")) {
-      const r = await store.pruneRetention();
-      console.warn(`pruned ${r.removed.length} expired backup(s); ${r.kept} kept.`);
+      const r = await store.pruneBackups();
+      console.warn(
+        `pruned ${r.dumps.removed.length} expired dump(s) and ${r.wal.removed.length} WAL segment(s); ` +
+          `${r.kept} kept. Offsite document copies are never time-expired.`,
+      );
     } else if (has("--objects")) {
       const r = await objects.syncFleetObjects();
       console.warn(

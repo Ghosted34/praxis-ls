@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  ops, ago, fmtBytes, fmtDuration, canOperate,
+  ops, ago, fmtBytes, fmtDuration, canOperate, canRestore,
   type BackupStatus, type BackupRun, type DrillsResult, type ObjectStatus, type BackupPreflight,
   type WalStatus,
 } from "@/lib/ops-api";
@@ -9,6 +9,7 @@ import { fmtDateTime } from "@/lib/format";
 import { Button, Card, ConfirmModal, Empty, Loading, Modal, PageHeader, Pill } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import { OpsNav } from "./OpsNav";
+import { RestoreDatabaseModal, RestoreObjectsModal } from "./OpsRestoreModal";
 
 /**
  * WS-B1 / B2 / B3 / B4 — backup freshness, the run log, object sync and the
@@ -33,6 +34,11 @@ export function OpsBackups() {
   const [confirm, setConfirm] = useState<null | { title: string; body: string; run: () => Promise<unknown> }>(null);
   const [preflight, setPreflight] = useState<BackupPreflight | null>(null);
   const [drillDetail, setDrillDetail] = useState<DrillsResult["drills"][number] | null>(null);
+  // Recovery is deliberately NOT routed through `confirm` above: it needs the
+  // tenant name typed back, and it is the one action here that writes to a
+  // live tenant. See OpsRestoreModal.
+  const [restoreDb, setRestoreDb] = useState<string | null>(null);
+  const [restoreDocs, setRestoreDocs] = useState<string | null>(null);
 
   const act = (label: string, p: Promise<unknown>, done: string, reload?: () => void) => {
     setBusy(label);
@@ -192,8 +198,9 @@ export function OpsBackups() {
                         ) : "—"}
                       </td>
                       <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                        {canOperate() && (
-                          <div className="row" style={{ gap: 4, justifyContent: "flex-end" }}>
+                        <div className="row" style={{ gap: 4, justifyContent: "flex-end" }}>
+                          {canOperate() && (
+                            <>
                             <Button size="sm" variant="ghost" loading={busy === `b:${t.slug}`}
                               onClick={() => act(`b:${t.slug}`, ops.backupTenant(t.slug), `Backup queued for ${t.slug}`, status.reload)}>
                               Back up
@@ -206,8 +213,18 @@ export function OpsBackups() {
                               })}>
                               Drill
                             </Button>
-                          </div>
-                        )}
+                            </>
+                          )}
+                          {/* Real recovery. Its own capability (ops.restore), and
+                              deliberately the last button in the row — the one that
+                              writes to a live tenant should not be the easy click. */}
+                          {canRestore() && (
+                            <Button size="sm" variant="ghost" onClick={() => setRestoreDb(t.slug)}
+                              title="Real recovery — restores this tenant's dump into a NEW database. The live database is not touched.">
+                              Restore…
+                            </Button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -277,8 +294,9 @@ export function OpsBackups() {
                           ) : <Pill tone="warn">never</Pill>}
                         </td>
                         <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                          {canOperate() && (
-                            <div className="row" style={{ gap: 4, justifyContent: "flex-end" }}>
+                          <div className="row" style={{ gap: 4, justifyContent: "flex-end" }}>
+                            {canOperate() && (
+                              <>
                               <Button size="sm" variant="ghost" loading={busy === `s:${o.slug}`}
                                 onClick={() => act(`s:${o.slug}`, ops.syncObjects(o.slug), `Object sync queued for ${o.slug}`, objects.reload)}>
                                 Sync
@@ -287,8 +305,15 @@ export function OpsBackups() {
                                 onClick={() => act(`c:${o.slug}`, ops.scanObjects(o.slug), `Integrity scan queued for ${o.slug}`, objects.reload)}>
                                 Scan
                               </Button>
-                            </div>
-                          )}
+                              </>
+                            )}
+                            {canRestore() && (
+                              <Button size="sm" variant="ghost" onClick={() => setRestoreDocs(o.slug)}
+                                title="Put back documents that are missing from primary storage. Never overwrites a file that survived.">
+                                Restore…
+                              </Button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -350,6 +375,24 @@ export function OpsBackups() {
               .catch(fail)
           }
           onClose={() => setConfirm(null)}
+        />
+      )}
+
+      {restoreDb && (
+        <RestoreDatabaseModal
+          slug={restoreDb}
+          onClose={() => { setRestoreDb(null); drills.reload(); runs.reload(); }}
+          onDone={toast}
+          onError={fail}
+        />
+      )}
+
+      {restoreDocs && (
+        <RestoreObjectsModal
+          slug={restoreDocs}
+          onClose={() => { setRestoreDocs(null); objects.reload(); runs.reload(); }}
+          onDone={toast}
+          onError={fail}
         />
       )}
 

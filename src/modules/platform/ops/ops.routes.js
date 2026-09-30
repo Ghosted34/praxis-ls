@@ -7,6 +7,7 @@
  *   ops.read     — health, backup freshness, run log, drills, uptime, windows
  *   ops.operate  — trigger a backup, sync, integrity scan, drill or probe
  *   ops.maintain — schedule or cancel a maintenance window
+ *   ops.restore  — put data back into a LIVE tenant (migration 0112)
  *
  * The split is about blast radius, not seniority. `ops.read` is safe for anyone
  * on call. `ops.operate` spends real I/O on a shared Postgres host and can
@@ -67,6 +68,29 @@ router.post(
   validateParams("slug"),
   validateBody("drillRun"),
   c.drillOne,
+);
+
+/* ── Recovery — real, not a rehearsal (ops.restore, migration 0112) ─────── */
+//
+// Both routes make the operator type the tenant name back in the body; the URL
+// alone is not consent for an action whose consequences outlive the incident.
+// The database route restores into a NEW database the server names itself —
+// there is no destination parameter, so no request can ask to overwrite the
+// live one — and the response says plainly that the cutover steps are still
+// manual (runbook §4.3a).
+router.post(
+  "/ops/restore/:slug",
+  requireCap("ops.restore"),
+  validateParams("slug"),
+  validateBody("restoreRun"),
+  c.restoreRun,
+);
+router.post(
+  "/ops/objects/:slug/restore",
+  requireCap("ops.restore"),
+  validateParams("slug"),
+  validateBody("objectRestoreRun"),
+  c.objectRestore,
 );
 
 /* ── Uptime ─────────────────────────────────────────────────────────────── */

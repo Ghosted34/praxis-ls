@@ -95,6 +95,12 @@ const CAP_CATALOGUE = [
   // scratch copy of a tenant DB); `ops.maintain` is the only ops act tenant
   // users can see — a window banners them, and READ_ONLY parks their writes.
   "ops.read", "ops.operate", "ops.maintain",
+  // Recovery (migration 0112). Deliberately NOT part of ops.operate: nothing
+  // that capability allows can touch live tenant data, which is what makes the
+  // unattended monthly drill safe to run. `ops.restore` is the one that puts
+  // data back into a live tenant — a decision with data-loss consequences,
+  // since everything written after the restored backup is gone.
+  "ops.restore",
 ];
 
 // Root Admin is the built-in superuser: it bypasses capability checks entirely

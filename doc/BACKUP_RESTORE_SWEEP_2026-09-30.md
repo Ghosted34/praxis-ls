@@ -64,7 +64,18 @@ There are three different things people mean by "restore":
 Monthly job, or the **Run drill** / per-tenant **Drill** buttons. It restores into a **temporary throwaway database** named `praxis_drill_…`, checks it (are all the tables there? do the row counts match the live tenant within 5%? does the accounting ledger still balance?), records how long it took, and deletes the copy. **The live tenant database is never written to.** Results appear in the **"Restore drills"** card — pass/fail, measured time, and a **Checks** button showing exactly what was verified.
 
 **2. A real recovery (a genuine emergency — data lost, tenant down).**
-Deliberately **not** available as a button anywhere. There is no "Restore this tenant" button in the console, on purpose: a restore that can overwrite a live tenant by accident is a drill nobody would ever agree to schedule. An engineer with server access runs it as a command:
+Now available on screen, to people holding the **`ops.restore`** permission only (Root Admin by default — it is *not* included in the permission that lets someone run backups and drills).
+
+On the tenant's row in the **"Dump freshness"** table there is a **Restore…** button, after *Back up* and *Drill*. It opens a dialog that:
+
+- warns that this is a **real recovery, not a drill**;
+- offers an optional *"Recover to an earlier point"* date box (leave it blank for the newest copy);
+- makes you **type the tenant's name** into a box to enable the red **"Restore into a new database"** button;
+- states that this is **step 2 of 8** and lists what is still left to do by hand.
+
+It restores into a **brand-new database** and stops. The tenant keeps running on its current database — nothing a user can see changes — so if the restore was the wrong call, nothing was lost by trying it. The confirmation screen names the new database and repeats the remaining steps. The result, with its integrity checks, appears in the **"Restore drills"** card like any other restore.
+
+The same command still exists for an engineer who wants the fuller options (point-in-time, one document, force):
 
 ```
 npm run db:restore:drill -- --slug=acme --into=tenant_acme_recovered --i-am-recovering
@@ -72,15 +83,18 @@ npm run db:restore:drill -- --slug=acme --into=tenant_acme_recovered --i-am-reco
 
 The `--i-am-recovering` flag is mandatory — without it the system refuses any destination that is not a throwaway drill database. Optional `--at=2026-09-28T12:00:00Z` picks an older copy instead of the latest.
 
+**2b. Putting documents back.**
+In the **"Object storage"** card, each tenant row now has a **Restore…** button next to *Sync* and *Scan* (again, `ops.restore` only). Type the tenant name, press **"Rehearse (changes nothing)"**, and it shows you the numbers first: how many documents are on record, how many would be put back, how many are already there and will be left alone, and how many are in neither place and cannot be recovered. Only then does the **"Restore N documents"** button become available. It never replaces a file that survived — a file still sitting there is never older than the backup, so replacing it could only lose work.
+
 **3. Point-in-time recovery (rewind to an exact minute).**
 Only available if the optional WAL feature is switched on. Off by default — the **"Recovery point"** card at the top of the screen tells you in plain words which one you have: *"24h recovery point — WAL archiving is off"* or e.g. *"6m recovery point"*.
 
 ### If something is actually lost — the order
 
-1. **Database first.** An engineer restores it from the command line (there is no button, on purpose).
-2. Point the tenant at the restored database.
-3. **Documents second** — `npm run db:objects:restore -- --slug=<tenant> --dry-run` first to see what it would do, then for real.
-4. Run a **Scan** to confirm every document the database expects is back.
+1. **Database first** — the **Restore…** button on the tenant's row (or the command, for point-in-time). It lands in a new database; the tenant is still on the old one.
+2. **Point the tenant at the restored database**, re-issue its credentials, refresh the pooler, and run any migrations the backup predates. This is the part that is still by hand, and it is written out step by step in `doc/INCIDENT_RUNBOOK.md` §4.3a.
+3. **Documents second** — the **Restore…** button in the Object storage card (rehearse, read the numbers, then restore), or `npm run db:objects:restore -- --slug=<tenant> --dry-run` then for real.
+4. Run a **Scan** to confirm every document the database expects is back, and **download one document as a tenant user** — that is the check that catches a database restored without its files.
 
 Database before documents, always: the database is the list of which files should exist. Restore files first and there is nothing to check them against.
 
@@ -391,7 +405,7 @@ been walked end to end on a copy — see "needs your input" below.
 |---|---|---|
 | **F3 / B — encryption and a delete-proof backup bucket** | Which cloud account the backups live in, who holds the key, and whether the bucket can be switched to versioned + delete-protected | The plan says backups sit in a *separate* account so stolen app credentials cannot destroy them, and that they are encrypted with a key we hold. The code sets neither, and I cannot pick an account, create a key, or change bucket policy from here. Once you name the account and key, the code side is an afternoon: set encryption on upload, and make the existing backup-destination self-test report versioning and delete-protection on screen so it stops being folklore. |
 | **C — rehearsing the recovery** | An hour, a throwaway tenant copy, and someone who can approve doing it | A recovery procedure nobody has run is the same category of claim as a backup nobody has restored. I can drive it; it needs a scheduled window and your go-ahead, because it touches the registry and the pooler. |
-| **The restore button** | A product decision — see below | Adding a button that can overwrite live tenant data is a risk posture question, not an engineering one. My recommendation is in §10. |
+| ~~The restore button~~ | ~~A product decision~~ | **Decided: option 3 — both buttons built.** See §10 for the safeguards. |
 
 ## 8. Follow-up questions, answered against the code
 
@@ -499,7 +513,12 @@ Two things it does **not** do: it does not touch the live data (it only deletes 
 
 ### Q7 — There is no restore button per tenant. Does restore functionality exist for the database and for media?
 
-**Database: yes** — but deliberately not as a button.
+> **Superseded on 2026-09-30.** Both restores now have a console button — see
+> §10, which records the decision, the safeguards and what the buttons still
+> do *not* do. The rest of this answer describes the command-line paths, which
+> remain the fuller surface (point-in-time, single document, `--force`).
+
+**Database: yes** — originally command line only; now also a console button.
 
 | Path | Available as | Touches the live tenant? |
 |---|---|---|
@@ -577,62 +596,83 @@ That keeps the speed and the honesty. The trigger to revisit: the object sync fa
 
 ---
 
-## 10. The restore button — what exists, and what I recommend
+## 10. The restore button — shipped
 
-### What is on screen today
+**Decision: option 3.** Both restores now have a button in Platform Console →
+Ops → Backup & restore. I argued against the database one; the call was made to
+add it, so it is built with every safeguard I said I would insist on, and this
+section records what those are so the reasoning survives the people involved.
 
-| Action | Button? | Touches live data? |
-|---|---|---|
-| Rehearse a restore (into a throwaway copy) | ✅ "Run drill", and "Drill" per tenant | No |
-| Copy documents offsite / check them | ✅ "Sync" / "Scan" per tenant | No |
-| Restore a tenant's **database** for real | ❌ command line only | Yes |
-| Restore a tenant's **documents** for real | ❌ command line only | Yes |
+### What is on screen now
 
-So there is a restore, twice over, and both are behind a terminal. The database
-one additionally refuses any destination that is not a throwaway unless the
-operator passes `--i-am-recovering`.
+| Action | Where | Capability | Touches live data? |
+|---|---|---|---|
+| Rehearse a restore (throwaway copy) | "Run drill" / per-tenant "Drill" | `ops.operate` | No |
+| Copy documents offsite / check them | "Sync" / "Scan" | `ops.operate` | No |
+| **Restore a tenant's database** | **"Restore…" on the tenant row** | **`ops.restore`** | Creates a new database; live one untouched |
+| **Restore a tenant's documents** | **"Restore…" in Object storage** | **`ops.restore`** | Writes back missing files only |
 
-### Why it was built that way
+### The safeguards, and why each one is there
 
-A console button that can overwrite a live tenant's data is a button that will
-eventually be clicked on the wrong row — and the thing that makes the *monthly
-automatic rehearsal* acceptable is that nothing in that path can reach live
-data. Put a real-restore button next to it and every drill inherits the risk of
-the button beside it.
+**A new capability, `ops.restore` (migration 0112).** Not folded into
+`ops.operate`. Everything under `ops.operate` is *incapable* of touching live
+tenant data, and that is precisely what makes an unattended monthly drill safe
+to schedule. The Restore button sits next to the Drill button; the permissions
+must not be the same one. It is granted to Root Admin only and can be handed to
+another role deliberately from the Roles screen.
 
-There is also a practical point: a real recovery is not one action. It is a
-sequence — park the tenant, restore, re-point, re-credential, migrate, restore
-documents, verify, unpark (runbook §4.3a). A button that does step 2 and leaves
-the other seven to someone improvising under pressure is worse than no button,
-because it *looks* like the whole thing.
+**The database restore never overwrites the live database.** There is no
+destination parameter in the API at all — the server names a new database
+(`tenant_<slug>_recovered_<timestamp>`) and restores into that. The tenant keeps
+being served by its current database, so the button is *reversible*: if the
+restore turns out to be the wrong call, nothing was lost by trying it.
 
-### What is genuinely worth reconsidering
+**It says it is step 2 of 8.** The dialog, and the response the console shows
+afterwards, both state that parking the tenant, re-pointing the registry,
+re-issuing credentials and the pooler, running missed migrations, restoring
+documents and verifying are still manual — runbook §4.3a. A button that does
+step 2 while looking like the whole recovery is worse than no button; this was
+the strongest argument against it, and the answer is to refuse to imply it.
 
-The two halves are not equally dangerous, and treating them the same is the
-weakest part of the current position:
+**The tenant name must be typed back.** Not an "Are you sure?" — the failure
+worth guarding is recovering the *wrong tenant*, and nobody notices that until
+someone's users report missing work. Typing the name makes the target something
+the operator stated rather than something they landed on.
 
-- **Database restore — keep it off the console.** Irreversible, replaces
-  everything, and only correct as part of the longer sequence.
-- **Document restore — a safe version could reasonably be a button.** The
-  default mode only puts back files that are *missing*; it never overwrites a
-  surviving file, and it verifies each fingerprint before writing. "Put back
-  the documents this tenant is missing" is close to un-dangerous, and it is the
-  single most likely thing support will need at short notice.
+**Every recovery is audited before it starts.** `platform.platform_audit`,
+action `tenant.restore.started`, with the actor, the tenant, the chosen dump
+and the destination. Six weeks later the only question that matters is which
+dump was chosen and by whom. A failure to write the audit row does not block
+the restore — during an incident the recovery matters more than the bookkeeping,
+and the failure is logged.
 
-### My recommendation — three options, in order of preference
+**The document restore always rehearses first.** The dialog runs a dry run and
+shows the numbers — how many documents are on record, how many would be written
+back, how many are already present and will be left alone, and how many are in
+neither place and therefore cannot be recovered at all — before the real button
+becomes available. `--force` (overwriting files that survived) is **not**
+reachable from HTTP: a surviving file is never older than the backup, so
+overwriting can only lose work. That stays a command-line decision made by
+someone who has read why.
 
-1. **Add a document-restore button only, in its safe mode** (missing files
-   only, no overwrite), behind `ops.operate`, with a dry-run preview shown
-   before it runs. Keep database restore on the command line. *Roughly half a
-   day: the service, the safety and the tests already exist — it needs a route,
-   a confirmation dialog and a results panel.*
-2. **Change nothing**, and rely on the runbook plus the rehearsal. Defensible,
-   and cheapest.
-3. **Add a database-restore button too.** I would argue against it. If it is
-   wanted anyway, the conditions I would insist on: it restores into a *new*
-   database and never over the existing one, it is gated behind a separate
-   capability that is not `ops.operate`, it requires typing the tenant slug to
-   confirm, and it says on screen that steps 3–8 of the runbook still have to
-   be done by hand.
+### What the buttons still do *not* do
 
-**Tell me which and I will build it.** My vote is option 1.
+- Point-in-time recovery (WAL replay) — command line and Postgres procedure.
+- Restoring a single document — `--doc=<id>` on the CLI.
+- Overwriting a corrupt surviving file — `--force` on the CLI.
+- Cutting a tenant over to a restored database. Deliberate: that is the step
+  that makes a recovery visible to users, and it is eight steps of runbook, not
+  one click.
+
+### Where this is in the code
+
+| Piece | Path |
+|---|---|
+| Capability | `migrations/platform/0112_ops_restore_capability.sql`, `src/middleware/platform-auth.js` |
+| Routes | `src/modules/platform/ops/ops.routes.js` — `POST /ops/restore/:slug`, `POST /ops/objects/:slug/restore` |
+| Request shapes | `src/modules/platform/ops/ops.validator.js` — `restoreRun`, `objectRestoreRun` |
+| Handlers + audit | `src/modules/platform/ops/ops.controller.js` — `restoreRun`, `objectRestore` |
+| Dialogs | `platform-console/src/features/ops/OpsRestoreModal.tsx` |
+| Buttons | `platform-console/src/features/ops/OpsBackups.tsx` |
+| Client | `platform-console/src/lib/ops-api.ts` — `canRestore`, `restoreDatabase`, `restoreObjects` |
+| Tests | `tests/unit/ops-routes.test.js` — "recovery routes (ops.restore)", 8 tests |

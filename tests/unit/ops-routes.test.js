@@ -62,10 +62,35 @@ jest.mock("../../src/services/platform/restore.service", () => ({
   restoreTenant: jest.fn(async () => ({ ok: true })),
   runScheduledDrill: jest.fn(async () => ({ ok: true, slug: "acme" })),
 }));
+// Shaped like the real `restoreTenantObjects` result. It lives OUTSIDE the
+// factory (and is named `mock*`, which is the only name Jest's hoisting
+// permits a factory to close over) because the factory is lifted above the
+// imports — it is called lazily, by which time this exists.
+const mockObjectRestoreResult = (dryRun) => ({
+  ok: true,
+  slug: "acme",
+  dry_run: !!dryRun,
+  considered: 4,
+  restored: 2,
+  skipped: 2,
+  bytes: 10,
+  unverified: 0,
+  missing_offsite: [],
+  mismatched: [],
+  failed: [],
+  duration_ms: 3,
+});
+
 jest.mock("../../src/services/platform/object-backup.service", () => ({
   objectBackupStatus: jest.fn(async () => []),
   syncTenantObjects: jest.fn(async () => ({ copied: 0 })),
   scanTenantIntegrity: jest.fn(async () => ({ clean: true })),
+  restoreTenantObjects: jest.fn(async (_meta, opts = {}) => mockObjectRestoreResult(opts.dryRun)),
+}));
+// The controller audits every recovery to platform.platform_audit. Mocked so
+// the HTTP tests do not need a database — the audit itself is asserted below.
+jest.mock("../../src/services/platform/db", () => ({
+  query: jest.fn(async () => ({ rows: [] })),
 }));
 jest.mock("../../src/services/platform/comms-metrics.service", () => ({
   // PR-3's ops read. The service is tested on its own (comms-call-metrics.test.js);
@@ -115,6 +140,8 @@ const backup = require("../../src/services/platform/backup.service");
 const restore = require("../../src/services/platform/restore.service");
 const maintenance = require("../../src/services/platform/maintenance.service");
 const registry = require("../../src/services/tenant/registry.service");
+const objectsSvc = require("../../src/services/platform/object-backup.service");
+const platformDb = require("../../src/services/platform/db");
 
 function makeApp() {
   const app = express();
@@ -211,6 +238,127 @@ describe("capability gating", () => {
     CAPS = new Set(["support.read"]);
     app = makeApp();
     await request(app).get("/ops/telemetry/acme").expect(200);
+  });
+});
+
+/**
+ * RECOVERY — the only routes in the console that write to a LIVE tenant.
+ *
+ * Three things are worth pinning here, and none of them are visible by reading
+ * the handler:
+ *
+ *   1. They are NOT reachable with `ops.operate`. Everything under that
+ *      capability is incapable of touching live data, which is what makes the
+ *      unattended monthly drill safe — and the Restore button sits next to the
+ *      Drill button, so the gate is the only thing keeping them apart.
+ *   2. The operator has to type the tenant name back. The URL alone is not
+ *      consent for an action whose consequences outlive the incident.
+ *   3. The destination is chosen by the SERVER. No request can name an
+ *      existing database, so no request can ask to overwrite the live one.
+ */
+describe("recovery routes (ops.restore)", () => {
+  beforeEach(() => {
+    CAPS = new Set(["ops.read", "ops.operate"]);
+    app = makeApp();
+    restore.restoreTenant.mockClear();
+    objectsSvc.restoreTenantObjects.mockClear();
+    platformDb.query.mockClear();
+  });
+
+  test("ops.operate does NOT let you restore — neither databases nor documents", async () => {
+    await request(app).post("/ops/restore/acme").send({ confirm_slug: "acme" }).expect(403);
+    await request(app)
+      .post("/ops/objects/acme/restore")
+      .send({ confirm_slug: "acme", dry_run: true })
+      .expect(403);
+    expect(restore.restoreTenant).not.toHaveBeenCalled();
+    expect(objectsSvc.restoreTenantObjects).not.toHaveBeenCalled();
+  });
+
+  test("the tenant name must be typed back, and must match the URL", async () => {
+    CAPS = new Set(["ops.restore"]);
+    app = makeApp();
+    // Missing entirely.
+    await request(app).post("/ops/restore/acme").send({}).expect(422);
+    // Present, valid as a slug, and the WRONG TENANT — the failure this guards.
+    await request(app).post("/ops/restore/acme").send({ confirm_slug: "beta" }).expect(422);
+    expect(restore.restoreTenant).not.toHaveBeenCalled();
+  });
+
+  test("a real restore goes into a NEW database and never over the live one", async () => {
+    CAPS = new Set(["ops.restore"]);
+    app = makeApp();
+    const res = await request(app)
+      .post("/ops/restore/acme")
+      .send({ confirm_slug: "acme" })
+      .expect(202);
+
+    expect(res.body.data.live_database_untouched).toBe(true);
+    expect(res.body.data.into).toMatch(/^tenant_acme_recovered_\d+$/);
+    // Never the live database name, whatever else changes about the format.
+    expect(res.body.data.into).not.toBe("tenant_acme");
+    // And the response says the recovery is not finished — steps 3-8 are manual.
+    expect(res.body.data.next_steps).toMatch(/runbook/i);
+
+    const args = restore.restoreTenant.mock.calls[0][0];
+    expect(args).toMatchObject({
+      slug: "acme",
+      allowNonDrillTarget: true,
+      drop: false,
+      recordDrill: true,
+    });
+    expect(args.into).toBe(res.body.data.into);
+  });
+
+  test("who recovered what is audited before the work starts", async () => {
+    CAPS = new Set(["ops.restore"]);
+    app = makeApp();
+    await request(app).post("/ops/restore/acme").send({ confirm_slug: "acme" }).expect(202);
+    const [sql, params] = platformDb.query.mock.calls[0];
+    expect(sql).toMatch(/platform_audit/);
+    expect(params[2]).toBe("tenant.restore.started");
+  });
+
+  test("a recovery is not blocked when its own audit row fails to write", async () => {
+    // During an incident the restore matters more than the bookkeeping.
+    CAPS = new Set(["ops.restore"]);
+    app = makeApp();
+    platformDb.query.mockRejectedValueOnce(new Error("platform db down"));
+    await request(app).post("/ops/restore/acme").send({ confirm_slug: "acme" }).expect(202);
+    expect(restore.restoreTenant).toHaveBeenCalled();
+  });
+
+  test("the document restore rehearsal answers inline and writes nothing", async () => {
+    CAPS = new Set(["ops.restore"]);
+    app = makeApp();
+    const res = await request(app)
+      .post("/ops/objects/acme/restore")
+      .send({ confirm_slug: "acme", dry_run: true })
+      .expect(200);
+    expect(res.body.data.dry_run).toBe(true);
+    expect(objectsSvc.restoreTenantObjects).toHaveBeenCalledWith(expect.anything(), { dryRun: true });
+    // A rehearsal is not an event worth an audit row; the real run is.
+    expect(platformDb.query).not.toHaveBeenCalled();
+  });
+
+  test("the real document restore detaches, and cannot be forced from HTTP", async () => {
+    CAPS = new Set(["ops.restore"]);
+    app = makeApp();
+    const res = await request(app)
+      .post("/ops/objects/acme/restore")
+      // `force` overwrites files that survived, which can only lose work. The
+      // validator strips it; it stays a command-line decision.
+      .send({ confirm_slug: "acme", dry_run: false, force: true })
+      .expect(202);
+    expect(res.body.data.kind).toBe("OBJECT_RESTORE");
+    expect(objectsSvc.restoreTenantObjects).toHaveBeenCalledWith(expect.anything());
+  });
+
+  test("an unknown tenant is a 404, not a restore of nothing", async () => {
+    CAPS = new Set(["ops.restore"]);
+    app = makeApp();
+    await request(app).post("/ops/restore/ghost").send({ confirm_slug: "ghost" }).expect(404);
+    expect(restore.restoreTenant).not.toHaveBeenCalled();
   });
 });
 

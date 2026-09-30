@@ -36,6 +36,7 @@ const support = require("../../../services/platform/support.service");
 const commsMetrics = require("../../../services/platform/comms-metrics.service");
 const entitlement = require("../../../services/platform/entitlement.service");
 const store = require("../../../services/platform/backup-storage.service");
+const platformDb = require("../../../services/platform/db");
 const registry = require("../../../services/tenant/registry.service");
 const { asyncHandler, AppError } = require("../../../utils/errors");
 const { logger } = require("../../../config/logger");
@@ -180,6 +181,133 @@ const drillOne = asyncHandler(async (req, res) => {
 const drillScheduled = asyncHandler(async (req, res) => {
   detach("scheduled restore drill", restore.runScheduledDrill(), req);
   res.status(202).json({ data: { accepted: true, scope: "least-recently-drilled" } });
+});
+
+/* ── Real recovery (ops.restore) ────────────────────────────────────────── */
+
+/**
+ * Record who recovered what, before the work starts.
+ *
+ * A recovery is the one ops action whose consequences outlive the incident:
+ * data written between the backup and the failure is gone, and six weeks later
+ * the only question that matters is which dump was chosen and by whom. The
+ * backup_run / restore_drill rows say what the SYSTEM did; this says who asked.
+ */
+async function auditRecovery(req, action, entityRef, payload) {
+  try {
+    await platformDb.query(
+      "INSERT INTO platform.platform_audit (actor_id, tenant_id, action, entity_ref, payload) VALUES ($1,$2,$3,$4,$5)",
+      [actor(req), payload.tenant_id || null, action, entityRef, JSON.stringify(payload)],
+    );
+  } catch (err) {
+    // Never block a recovery on its own bookkeeping. During an incident the
+    // restore matters more than the audit row, and a platform DB that cannot
+    // take this INSERT is a bigger problem being handled elsewhere.
+    logger.error({ err, action, entityRef }, "failed to audit a recovery action");
+  }
+}
+
+/** The operator must type the tenant name back; the URL alone is not consent. */
+function requireTypedSlug(req, meta) {
+  if (req.body.confirm_slug !== meta.slug) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      `Type the tenant name to confirm: expected "${meta.slug}".`,
+      422,
+    );
+  }
+}
+
+/**
+ * Restore a tenant's database from a backup — for real.
+ *
+ * IT RESTORES INTO A NEW DATABASE. NOTHING HERE OVERWRITES THE LIVE ONE.
+ *
+ *   The server names the destination; no request can choose it. The existing
+ *   database is left exactly as it is, which means the rollback for a recovery
+ *   that turns out to be the wrong call is "point the tenant back" rather than
+ *   "find another backup". It also means this endpoint, on its own, changes
+ *   nothing a tenant can see: the tenant is still served by its current
+ *   database until a human re-points the registry.
+ *
+ *   That is the deliberate shape of it. Steps 3-8 of runbook §4.3a — re-point,
+ *   re-issue credentials, refresh the pooler, run outstanding migrations,
+ *   restore documents, verify — are still manual, and the console says so
+ *   rather than implying the button was the whole recovery.
+ *
+ * Detached, like the drill: a real restore is minutes, and the measured time
+ * is part of the record.
+ */
+const restoreRun = asyncHandler(async (req, res) => {
+  const meta = await tenantOr404(req.params.slug);
+  requireTypedSlug(req, meta);
+
+  // Server-chosen, timestamped, and impossible to collide with the live name.
+  const target = `tenant_${meta.slug}_recovered_${Date.now()}`;
+
+  await auditRecovery(req, "tenant.restore.started", target, {
+    tenant_id: meta.tenant_id,
+    slug: meta.slug,
+    into: target,
+    at: req.body.at || null,
+  });
+
+  detach(
+    `recovery restore ${meta.slug}`,
+    restore.restoreTenant({
+      slug: meta.slug,
+      at: req.body.at || null,
+      into: target,
+      drop: false, // The whole point is that it survives the request.
+      allowNonDrillTarget: true,
+      recordDrill: true, // It is a restore; it belongs in the restore record.
+    }),
+    req,
+  );
+
+  res.status(202).json({
+    data: {
+      accepted: true,
+      slug: meta.slug,
+      into: target,
+      live_database_untouched: true,
+      next_steps:
+        "The tenant is still served by its current database. Re-point the registry, " +
+        "re-issue credentials and the pooler, run outstanding migrations, restore " +
+        "documents, then verify — incident runbook section 4.3a.",
+    },
+  });
+});
+
+/**
+ * Put back documents that are missing from primary storage.
+ *
+ * SAFE BY CONSTRUCTION, WHICH IS WHY IT IS ALLOWED A BUTTON AT ALL.
+ *
+ *   It only writes files that are absent, never over one that survived, and it
+ *   verifies each file's fingerprint against what the database says it should
+ *   be before writing it. A surviving file is never older than the backup, so
+ *   overwriting could only lose data — `force` exists on the command line and
+ *   is deliberately not reachable from here.
+ *
+ * The dry run answers synchronously because it is the thing the operator is
+ * reading before deciding; the real run detaches.
+ */
+const objectRestore = asyncHandler(async (req, res) => {
+  const meta = await tenantOr404(req.params.slug);
+  requireTypedSlug(req, meta);
+
+  if (req.body.dry_run) {
+    return res.json({ data: await objects.restoreTenantObjects(meta, { dryRun: true }) });
+  }
+
+  await auditRecovery(req, "tenant.objects.restore.started", meta.slug, {
+    tenant_id: meta.tenant_id,
+    slug: meta.slug,
+  });
+
+  detach(`document restore ${meta.slug}`, objects.restoreTenantObjects(meta), req);
+  return res.status(202).json({ data: { accepted: true, slug: meta.slug, kind: "OBJECT_RESTORE" } });
 });
 
 /* ── Uptime (WS-U1) ─────────────────────────────────────────────────────── */
@@ -350,6 +478,8 @@ module.exports = {
   drills,
   drillOne,
   drillScheduled,
+  restoreRun,
+  objectRestore,
   uptimeAvailability,
   uptimeIncidents,
   uptimeTargets,

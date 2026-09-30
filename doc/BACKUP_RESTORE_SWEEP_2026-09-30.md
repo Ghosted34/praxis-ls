@@ -279,7 +279,21 @@ Rationale quoted in-file: *"A drill that could touch the live tenant database is
 
 ## 6. Findings / gaps
 
-> **Status:** F1, F2, F5, F8 and the media-coverage gap are **fixed** — see §7. F3, F4, F6 and F7 remain open and are tracked there as A–D.
+> **Status at a glance** — see §7 for the detail.
+>
+> | # | Finding | Status |
+> |---|---|---|
+> | **F1** | WAL archiver called its storage function with the arguments reversed — point-in-time recovery could never have worked | ✅ **Fixed** (+7 tests) |
+> | **F2** | "Apply retention" only ever pruned database dumps; the change-log archive grew forever | ✅ **Fixed** |
+> | **F3** | Encryption at rest and a delete-proof bucket are assumed, never set or verified | ⬜ Open — **B** |
+> | **F4** | Restore assumes every tenant is on the default database server; backup does not | ⬜ Open — **A** |
+> | **F5** | Documents could be backed up but never restored | ✅ **Fixed** (+9 tests) |
+> | **F6** | The rehearsal checks the restored copy's `live` schema by hard-coded name, while reading the source by its configured name | ⬜ Open — **E** (small) |
+> | **F7** | A real recovery stops at the restored database; the cutover steps are undocumented | ⬜ Open — **C** |
+> | **F8** | `DEPLOYMENT.md` advertised a manual `pg_dumpall` as the backup | ✅ **Fixed** |
+> | **M1** | Chat photos, voice notes and video were outside the backup entirely | ✅ **Fixed** |
+> | — | The monthly rehearsal still proves only the database, not documents | ⬜ Open — **D** |
+
 
 **F1 — `wal-archive.js` calls `putStream` with reversed arguments (breaks PITR).**
 `scripts/db/wal-archive.js:101`: `store.putStream(key, fs.createReadStream(sourcePath))`, but the signature is `putStream(readable, key)` (`backup-storage.service.js:413`). With the local driver this fails the `assertSafeKey` check on a stream object and `archive_command` exits 1 → Postgres retries forever and WAL never recycles. No test covers this script. **One-line fix; highest-value item here.**
@@ -345,6 +359,7 @@ Files: `src/services/platform/backup-storage.service.js` (`pruneBackups`), `src/
 | **B** | **Encryption at rest and a write-once bucket are assumed, not enforced.** The plan calls for both; nothing in the code sets or verifies them. | Half policy (bucket configuration), half code. Worth doing as one deliberate piece with the settings probe reporting the answer, so nobody has to assume again. |
 | **C** | **A real database recovery stops at the restored copy.** Re-pointing the tenant, re-issuing credentials, running outstanding migrations and cutting over are undocumented. | Needs to be written as a numbered procedure in the incident runbook *and walked through once on a drill copy* — writing it without rehearsing it would repeat the mistake this whole area exists to correct. |
 | **D** | **The monthly rehearsal still only rehearses the database.** Now that documents can be restored, the drill should also restore one document to a temporary location and check its fingerprint. | Small and worth doing next; keeping it separate keeps this change reviewable. |
+| **E** | **The rehearsal hard-codes the name `live` when inspecting the restored copy**, while reading the original by its configured schema name. Identical today for every tenant, so it changes nothing now — but a tenant configured differently would be compared against the wrong thing and the drill would still say "passed". | One-line-ish, but it needs a test with a differently-named schema to be worth anything, and it is the least likely of these to bite. |
 
 
 ## 8. Follow-up questions, answered against the code
@@ -487,3 +502,44 @@ It never overwrites a surviving file unless forced, verifies each file's hash be
 The trade is stated honestly in the same comment: the in-process version is a **serial** list-and-copy, O(number of objects), where rclone would parallelise and resume. If the object store outgrows it, the intended move is to swap the body of `syncObjects` for an rclone exec — the `backup_run` bookkeeping around it does not change. The same reasoning was applied again, harder, to WAL archiving when `pgBackRest` and `wal-g` were declined (`scripts/db/wal-archive.js` header).
 
 The only occurrences of the word "rclone" in the repo are these three comments explaining why it is not used.
+
+---
+
+## 9. "Why not rclone?" — the answer for the lead
+
+Asked directly: **would it work, and do we need it?**
+
+### Would it work? Yes, for one half of the job.
+
+rclone is a very good bulk file copier. It would happily mirror the document store to a second bucket, in parallel, with resume — and it would be faster at that than what we do now.
+
+What it would **not** do:
+
+- **The database backups don't need it.** Each tenant's dump is streamed straight from Postgres to the offsite bucket as it is produced. There is no local copy for rclone to come along and sync afterwards; inserting one would mean writing gigabytes to the host's disk first, which is slower and puts the backup on the very machine whose loss we are insuring against.
+- **The change log (WAL) can't use it.** Postgres runs one command per segment and treats "command succeeded" as "this segment is safe". Handing that to a background sync would mean Postgres marking segments safe while they were still sitting on the local disk — the archive would look healthy right up to the moment the host died, taking the newest and most valuable segments with it.
+
+So the honest scope is: rclone could replace the nightly **document** copy. Nothing else.
+
+### Do we need it? Not now — and the current version buys something rclone can't.
+
+**The speed argument doesn't bite yet.** The copy is incremental: it skips anything already offsite, so a normal night only moves the day's new files. It would need to be thousands of new documents per night before the nightly window became tight. Our own signal for when that changes already exists — the object sync's duration is recorded on every run, so "this is taking too long" is a number on the screen, not a guess.
+
+**The thing we'd lose is the important part.** rclone copies *what is in the bucket*. Our version copies *what the database says should exist* — and the difference between those two lists is the entire value of the integrity check:
+
+- a file in storage with no database row is junk;
+- a **database row with no file is a document the app will offer a user and fail to produce** — silent, invisible until someone clicks it, and the single worst state in this system.
+
+rclone can only ever find the first kind. A blind mirror would have copied our chat media problem straight past us; the database-driven version is what surfaced it (finding M1). It is also what makes the restore safe — restoring *by row* is how we know which files belong, can verify each one's fingerprint before writing, and can refuse to overwrite a surviving file.
+
+**Two smaller practical points:** rclone is another binary to install, pin and keep present in every container, and it needs a different remote configuration per storage backend — whereas our copier works unchanged whether storage is a local folder or S3, and can be tested without either.
+
+### The recommendation
+
+**Stay as we are, and treat it as a reviewable decision rather than a closed one.** If the nightly document copy starts running long, the answer isn't to abandon the approach — it's a hybrid:
+
+- **rclone for the bulk move** (parallel, resumable),
+- **our database-driven reconciliation kept on top** as the verification and restore path.
+
+That keeps the speed and the honesty. The trigger to revisit: the object sync failing to finish inside its nightly window, or a full-tenant document restore taking longer than the one-hour recovery target. Both are already measured.
+
+*(For completeness: the same reasoning was applied, harder, to `pgBackRest` and `wal-g` for the change-log archive. Same conclusion, same recorded trigger — if the archive starts falling behind, the lag figure on the screen is the signal, and the bucket layout is deliberately unchanged so swapping the tool in later doesn't invalidate anything already stored.)*

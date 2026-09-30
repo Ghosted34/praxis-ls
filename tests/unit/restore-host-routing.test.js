@@ -23,7 +23,12 @@
  * subject is where the connections are aimed, not what they do when they land.
  */
 
-const { Readable } = require("stream");
+/**
+ * `stream` is required at each use site rather than destructured up here: the
+ * mock factories below are hoisted above every import, and the hoisting gate
+ * (scripts/check-jest-mock-hoisting.js) reads a top-level `Readable` referenced
+ * anywhere near them as a factory closing over an uninitialised variable.
+ */
 
 /** Every `new Client(...)` the service opens, in order. */
 const mockClients = [];
@@ -131,7 +136,7 @@ beforeEach(() => {
   spawn.mockImplementation(() => fakePgRestore());
   const storeMock = require("../../src/services/platform/backup-storage.service");
   storeMock.openStream.mockImplementation(async () =>
-    Readable.from([Buffer.from("PGDMP-fake-bytes")]),
+    require("stream").Readable.from([Buffer.from("PGDMP-fake-bytes")]),
   );
 });
 

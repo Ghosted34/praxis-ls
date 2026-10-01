@@ -330,12 +330,30 @@ log that echoes a remote, and outlives whoever set it up.
 
 ## 7. Operations notes
 
-- **Backups** — everything lives in the `praxis_pgdata` volume + `./data`
-  (document vault) + `./media` + `./uploads`. Minimum viable backup:
+- **Backups** — **not a manual step.** State lives in the `praxis_pgdata`
+  volume + `./data` (document vault) + `./media` + `./uploads`, and the
+  platform backs all of it up on a schedule: a per-tenant `pg_dump` nightly
+  (`BACKUP_CRON`), an offsite copy of tenant documents an hour later, a weekly
+  integrity scan, and a monthly restore rehearsal that measures the real RTO.
+  Every attempt is a row in `platform.backup_run`. Full picture:
+  `doc/BACKUP_RESTORE_SWEEP_2026-09-30.md`; console: **Ops → Backup & restore**.
+
+  Verify rather than assume — both exit non-zero when something is wrong, so
+  they work as deploy gates:
   ```bash
-  docker exec praxis_postgres pg_dumpall -U praxis-admin | gzip > backup-$(date +%F).sql.gz
-  tar czf files-$(date +%F).tar.gz data media uploads
+  npm run db:backup:status     # any tenant stale or never backed up?
+  npm run db:restore:history   # has a restore actually been PROVEN to work?
   ```
+  Recovery, in order — the database first, because it is the index that says
+  which documents should exist:
+  ```bash
+  npm run db:restore:drill -- --slug=<t> --into=tenant_<t>_recovered --i-am-recovering
+  npm run db:objects:restore -- --slug=<t> --dry-run   # then without --dry-run
+  npm run db:objects:scan                              # prove every row got its file
+  ```
+  A hand-run `pg_dumpall` is a last resort only: it is not recorded in
+  `platform.backup_run`, nothing monitors it or alerts on its absence, and it
+  lands on the host whose loss is the threat it is meant to cover.
 - **Logs** — `docker compose logs -f api` / `worker`.
   Pino writes to **stdout only**; Docker's json-file driver holds them, capped at
   50MB x 5 per service (see `logging:` in docker-compose.yml).

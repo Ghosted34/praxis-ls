@@ -32,11 +32,23 @@ const files = {
     sorted(path.join(MIGRATIONS, "seeds"), (f) => /^91/.test(f)),
 };
 
+/**
+ * `opts.host` / `opts.port` override the default server.
+ *
+ * WHY THE OVERRIDE EXISTS
+ *
+ *   The registry records a host per tenant precisely so a tenant CAN be moved
+ *   to a second Postgres server, and the backup path honours it. Everything
+ *   here assumed the default, so the day a tenant moved, its restore rehearsal
+ *   would have built the scratch copy on the wrong server and compared it
+ *   against the wrong original — and still reported "passed". Defaults are
+ *   unchanged, so every existing caller behaves exactly as before.
+ */
 function client(database, opts = {}) {
   const superuser = opts.superuser === true;
   return new Client({
-    host: config.TENANT_DB_HOST_DEFAULT,
-    port: config.TENANT_DB_PORT_DEFAULT,
+    host: opts.host || config.TENANT_DB_HOST_DEFAULT,
+    port: opts.port || config.TENANT_DB_PORT_DEFAULT,
     database,
     user: superuser ? config.TENANT_DB_SUPERUSER : config.DB_USER,
     password: superuser
@@ -46,8 +58,8 @@ function client(database, opts = {}) {
   });
 }
 
-async function ensureDatabase(dbName) {
-  const admin = client("postgres", { superuser: true });
+async function ensureDatabase(dbName, at = {}) {
+  const admin = client("postgres", { superuser: true, host: at.host, port: at.port });
   await admin.connect();
   try {
     const { rows } = await admin.query(

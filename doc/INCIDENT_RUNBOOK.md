@@ -193,6 +193,97 @@ a schema change applied but unrecorded, and the next run re-applied it.
 DATA 3.2: a partial fleet upgrade leaves tenants on different schema versions,
 and the tenant left behind is the one that breaks.
 
+### 4.3a Restoring one tenant from backup — the whole procedure
+
+Reach for this when a tenant's data is **lost or corrupted**, not merely
+unreachable. Everything above tries to get the existing data serving again;
+this replaces it, and replacing it discards everything written since the
+backup. Get the database owner on the call first.
+
+> **STATUS: WRITTEN, NOT YET REHEARSED.** Every step below is a real command
+> and the restore itself is exercised monthly, but this *sequence* has not been
+> walked end to end on a copy. Until it has, treat it as a checklist to follow
+> carefully rather than a script to trust, and correct it as you go. Rehearsing
+> it is tracked as item C in doc/BACKUP_RESTORE_SWEEP_2026-09-30.md.
+
+**Before anything: decide what you are recovering to.** The newest dump, or an
+earlier one because the damage was written before the last backup? Everything
+after that point is gone, and that is a decision for the business, not for
+whoever is at the keyboard.
+
+```bash
+npm run db:backup:status                     # how fresh is the newest dump?
+node scripts/db/backup-tenant.js --slug=<t>  # take a dump of the CURRENT state first
+```
+
+Take that dump even though the data is damaged. It is the only way back if the
+restore turns out to be the wrong call, and it costs a minute.
+
+**1. Park the tenant.** Schedule a READ_ONLY or ANNOUNCE maintenance window
+(Platform Console → Ops → Maintenance). Users writing into a database you are
+about to replace will lose exactly that work, silently.
+
+**2. Restore the database into a NEW database, never over the live one.**
+
+```bash
+npm run db:restore:drill -- --slug=<t> \
+  --into=tenant_<t>_recovered --i-am-recovering [--at=2026-09-28T12:00:00Z]
+```
+
+The flag is mandatory by design. The command prints the integrity probes as it
+goes — row counts against the live source, ledger balance, and a document
+spot-check. Read them before continuing; a restore that fails its own probes is
+not a recovery.
+
+**3. Point the tenant at the restored database.** Update the registry row
+(`platform.tenant.db_name`) to the new name. Keep the damaged database — do not
+drop it until the recovery is signed off. Renaming is the rollback.
+
+**4. Re-issue the tenant's database credential and refresh the pooler.**
+
+```bash
+npm run db:creds:verify
+npm run db:pgbouncer-auth        # then reload pgbouncer
+```
+
+The restored database is a different database; the credential and the pooler's
+auth file both have to know about it.
+
+**5. Apply any migrations the backup predates.**
+
+```bash
+node scripts/db/migrate-tenants.js --slug=<t>
+```
+
+A dump from Tuesday restored on Friday is three days behind the schema the
+code expects. Skipping this produces column-not-found errors that look like an
+application bug.
+
+**6. Restore the documents. Always after the database, never before** — the
+database is the list of which files should exist and what they should contain.
+
+```bash
+npm run db:objects:restore -- --slug=<t> --dry-run   # read this output
+npm run db:objects:restore -- --slug=<t>
+npm run db:objects:scan                              # proves every row has its file
+```
+
+Expect a small number of files with no row and rows with no file: the database
+dump and the document copy are taken an hour apart, so anything uploaded in
+that gap falls between them. A large number is a finding, not noise.
+
+**7. Verify before you let anyone back in.** Sign in as a tenant user. Open a
+recent operation, a recent invoice, and **download a document** — that last one
+is the check that catches a database restored without its files.
+
+**8. Lift the maintenance window**, and tell the tenant plainly what was lost:
+the window between the backup you restored and the incident. They will be asked
+by their own customers, and a vague answer costs more than the gap itself.
+
+**Afterwards:** keep the damaged database until sign-off, note the real
+recovery time against the one-hour target, and file anything this procedure got
+wrong — that is what turns it from a document into something trustworthy.
+
 ### 4.4 Business events are being dropped
 
 `checks.dead_letters.status: degraded` names the tenants. These are events that

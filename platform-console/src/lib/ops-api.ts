@@ -25,6 +25,13 @@ import { api, can } from "./api";
 export const canOperate = () => can("ops.operate");
 /** Can it schedule or cancel a maintenance window (which tenant users see)? */
 export const canMaintain = () => can("ops.maintain");
+/**
+ * Can it put data back into a LIVE tenant — restore a database from a backup,
+ * or restore missing documents? Separate from `ops.operate` because everything
+ * that capability allows is incapable of touching live data, which is what
+ * makes the unattended drill safe. Migration 0112.
+ */
+export const canRestore = () => can("ops.restore");
 
 /* ── Health (WS-H1 / H2) ─────────────────────────────────────────────────── */
 
@@ -420,6 +427,40 @@ export type CommsCalls = {
   alert: { threshold: number; window_hours: number; source: string };
 };
 
+/** 202 from a real database recovery. The live database is NOT replaced. */
+export type RestoreAccepted = {
+  accepted: boolean;
+  slug: string;
+  /** The NEW database the dump was restored into. */
+  into: string;
+  live_database_untouched: boolean;
+  next_steps: string;
+};
+
+/**
+ * A document restore, real or dry-run. `restored` counts files written back;
+ * `skipped` are files that were already in primary storage and were therefore
+ * left alone — a surviving file is never older than the backup.
+ */
+export type ObjectRestoreResult = {
+  ok: boolean;
+  slug: string;
+  dry_run: boolean;
+  /** Documents the database says should exist for this tenant. */
+  considered: number;
+  restored: number;
+  skipped: number;
+  bytes: number;
+  /** Written without a fingerprint to check against — not damage, not proof. */
+  unverified: number;
+  /** The rows whose file is in neither place. These are unrecoverable here. */
+  missing_offsite: { doc_id?: string; storage_path: string }[];
+  mismatched: { doc_id?: string; storage_path: string }[];
+  failed: { doc_id?: string; storage_path: string; error?: string }[];
+  duration_ms: number;
+  error?: string;
+};
+
 export const ops = {
   // Health
   fleetHealth: () => api<FleetHealth>("/ops/health"),
@@ -453,6 +494,21 @@ export const ops = {
   drillTenant: (slug: string, at?: string | null) =>
     api<{ accepted: boolean }>(`/ops/drills/${encodeURIComponent(slug)}`, { method: "POST", body: { at: at ?? null } }),
   drillScheduled: () => api<{ accepted: boolean }>("/ops/drills", { method: "POST" }),
+
+  // Recovery (ops.restore). `confirm_slug` is the tenant name typed back by the
+  // operator; the server rejects a mismatch. The database restore has no
+  // destination parameter on purpose — the server names a NEW database and the
+  // live one is never written to.
+  restoreDatabase: (slug: string, confirmSlug: string, at?: string | null) =>
+    api<RestoreAccepted>(`/ops/restore/${encodeURIComponent(slug)}`, {
+      method: "POST",
+      body: { confirm_slug: confirmSlug, at: at ?? null },
+    }),
+  restoreObjects: (slug: string, confirmSlug: string, dryRun: boolean) =>
+    api<ObjectRestoreResult | { accepted: boolean; slug: string }>(
+      `/ops/objects/${encodeURIComponent(slug)}/restore`,
+      { method: "POST", body: { confirm_slug: confirmSlug, dry_run: dryRun } },
+    ),
 
   // Uptime
   availability: (days = 30) => api<HostAvailability[]>(`/ops/uptime${qs({ days })}`),
